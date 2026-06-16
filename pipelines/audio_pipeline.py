@@ -16,6 +16,7 @@ Created by K.Astra and its members.
 
 import asyncio
 import queue
+import threading
 from math import gcd
 
 import numpy as np
@@ -90,13 +91,10 @@ def list_audio_devices() -> str:
 class AudioPipeline(AbstractPipeline):
     """
     Microphone capture with virtual split and automatic resampling.
-    Starts a sounddevice RawInputStream in a background thread.
 
-    Captures at settings.capture_rate (native mic rate, e.g. 44100 Hz).
-    Resamples to settings.sample_rate_in (16000 Hz) before queuing.
-
-    Both queues are unbounded to avoid dropping frames — callers
-    are responsible for draining them promptly.
+    The sounddevice callback is kept ultra-light (just bytes → raw_queue).
+    A dedicated resample worker thread reads from raw_queue, resamples
+    from capture_rate → sample_rate_in, then fans out to online/offline queues.
 
     Pi 5: Set WALLE_MIC_DEVICE to select your USB microphone.
           Set WALLE_CAPTURE_RATE=44100 if your mic only supports 44100 Hz.
@@ -107,21 +105,38 @@ class AudioPipeline(AbstractPipeline):
     def __init__(self):
         self.online_queue:  queue.Queue = queue.Queue()
         self.offline_queue: queue.Queue = queue.Queue()
-        self._stream = None
+        self._raw_queue:    queue.Queue = queue.Queue()   # raw captured bytes
+        self._stream  = None
+        self._worker  = None
         self._started = False
         self._device_index: int | None = _resolve_device(settings.mic_device)
         self._capture_rate: int = settings.capture_rate
         self._target_rate:  int = settings.sample_rate_in
         self._needs_resample: bool = (self._capture_rate != self._target_rate)
 
+    # ── Real-time callback — must be fast, NO heavy processing here ──────────
+
     def _audio_callback(self, indata, frames, time_info, status):
         if status:
             log.warning(f"Audio input status: {status}")
-        data = bytes(indata)
-        if self._needs_resample:
-            data = _resample(data, self._capture_rate, self._target_rate)
-        self.online_queue.put(data)
-        self.offline_queue.put(data)
+        # Put raw bytes into the raw queue; resample worker handles the rest
+        self._raw_queue.put(bytes(indata))
+
+    # ── Resample worker — runs in a background daemon thread ─────────────────
+
+    def _resample_worker(self):
+        """Drain raw_queue, resample if needed, fan out to downstream queues."""
+        while self._started or not self._raw_queue.empty():
+            try:
+                raw = self._raw_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            data = _resample(raw, self._capture_rate, self._target_rate) \
+                   if self._needs_resample else raw
+            self.online_queue.put(data)
+            self.offline_queue.put(data)
+
+    # ── Pipeline lifecycle ────────────────────────────────────────────────────
 
     async def start(self) -> None:
         if self._started:
@@ -130,7 +145,6 @@ class AudioPipeline(AbstractPipeline):
         await loop.run_in_executor(None, self._start_stream)
 
     def _start_stream(self):
-        # Log available devices on Pi so setup is easy
         if settings.is_raspberry_pi:
             log.info(list_audio_devices())
 
@@ -146,8 +160,17 @@ class AudioPipeline(AbstractPipeline):
                 stream_kwargs["device"] = self._device_index
 
             self._stream = sd.RawInputStream(**stream_kwargs)
-            self._stream.start()
             self._started = True
+
+            # Start resample worker before opening the stream
+            self._worker = threading.Thread(
+                target=self._resample_worker,
+                name="audio-resample",
+                daemon=True,
+            )
+            self._worker.start()
+
+            self._stream.start()
 
             dev_name = (
                 sd.query_devices(self._device_index)["name"]
@@ -164,17 +187,21 @@ class AudioPipeline(AbstractPipeline):
                 f"rate={self._capture_rate}Hz{resample_info}"
             )
         except Exception as e:
+            self._started = False
             log.error(f"Failed to start microphone: {e}")
             log.error("Tip: set WALLE_MIC_DEVICE=<index or name> in your .env")
             log.error("Tip: set WALLE_CAPTURE_RATE=44100 if your mic uses 44100 Hz")
 
     async def stop(self) -> None:
+        self._started = False
         if self._stream:
             self._stream.stop()
             self._stream.close()
             self._stream = None
-            self._started = False
-            log.info("Microphone stream stopped.")
+        if self._worker and self._worker.is_alive():
+            self._worker.join(timeout=2)
+            self._worker = None
+        log.info("Microphone stream stopped.")
 
     async def health(self) -> dict:
         return {
@@ -184,7 +211,9 @@ class AudioPipeline(AbstractPipeline):
             "target_rate":         self._target_rate,
             "resampling":          self._needs_resample,
             "blocksize":           settings.audio_blocksize,
+            "raw_queue_size":      self._raw_queue.qsize(),
             "online_queue_size":   self.online_queue.qsize(),
             "offline_queue_size":  self.offline_queue.qsize(),
         }
+
 

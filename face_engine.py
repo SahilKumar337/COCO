@@ -6,17 +6,19 @@ Camera is used ONLY for identifying who's in front — no images are sent to Gem
 
 import threading
 import time
-import cv2
 import numpy as np
 
-# Try to import face_recognition; graceful fallback if not installed
+# Try to import cv2 and face_recognition; graceful fallback if not installed
 try:
+    import cv2
     import face_recognition
     FACE_AVAILABLE = True
-except ImportError:
+except ImportError as _face_err:
+    cv2 = None  # type: ignore
+    face_recognition = None  # type: ignore
     FACE_AVAILABLE = False
-    print("[Face] face_recognition not installed. Face ID disabled.")
-    print("[Face] Install with: pip install face_recognition")
+    print(f"[Face] Face recognition disabled: {_face_err}")
+    print("[Face] Install with: pip install opencv-python-headless face_recognition")
 
 from database import load_all_faces, save_face_encoding
 

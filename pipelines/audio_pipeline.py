@@ -6,6 +6,8 @@ Captures microphone audio and fans it out to two queues:
 
 Pi 5 specifics:
   - Configurable device index/name via WALLE_MIC_DEVICE env var
+  - Configurable capture rate via WALLE_CAPTURE_RATE (e.g. 44100 for USB mics)
+  - Auto-resamples from capture_rate → sample_rate_in (16000 Hz)
   - Larger blocksize (4096) to avoid ALSA underruns on ARM
   - Lists available devices on startup for easy setup
 
@@ -14,7 +16,9 @@ Created by K.Astra and its members.
 
 import asyncio
 import queue
+from math import gcd
 
+import numpy as np
 import sounddevice as sd
 
 from pipelines.base import AbstractPipeline
@@ -22,6 +26,24 @@ from core.config import settings
 from core.logger import get_logger
 
 log = get_logger("pipeline.audio")
+
+
+def _resample(data: bytes, from_rate: int, to_rate: int) -> bytes:
+    """
+    Resample int16 PCM audio bytes from from_rate to to_rate.
+    Uses numpy linear interpolation — no extra dependencies needed.
+    """
+    if from_rate == to_rate:
+        return data
+    samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+    n_in = len(samples)
+    n_out = int(round(n_in * to_rate / from_rate))
+    if n_out == 0:
+        return b""
+    x_old = np.linspace(0.0, 1.0, n_in)
+    x_new = np.linspace(0.0, 1.0, n_out)
+    resampled = np.interp(x_new, x_old, samples)
+    return resampled.astype(np.int16).tobytes()
 
 
 def _resolve_device(device_hint: str) -> int | None:
@@ -67,13 +89,17 @@ def list_audio_devices() -> str:
 
 class AudioPipeline(AbstractPipeline):
     """
-    Microphone capture with virtual split.
+    Microphone capture with virtual split and automatic resampling.
     Starts a sounddevice RawInputStream in a background thread.
+
+    Captures at settings.capture_rate (native mic rate, e.g. 44100 Hz).
+    Resamples to settings.sample_rate_in (16000 Hz) before queuing.
+
     Both queues are unbounded to avoid dropping frames — callers
     are responsible for draining them promptly.
 
     Pi 5: Set WALLE_MIC_DEVICE to select your USB microphone.
-    Run `python -c "import sounddevice as sd; print(sd.query_devices())"` to list devices.
+          Set WALLE_CAPTURE_RATE=44100 if your mic only supports 44100 Hz.
     """
 
     name = "audio_pipeline"
@@ -84,11 +110,16 @@ class AudioPipeline(AbstractPipeline):
         self._stream = None
         self._started = False
         self._device_index: int | None = _resolve_device(settings.mic_device)
+        self._capture_rate: int = settings.capture_rate
+        self._target_rate:  int = settings.sample_rate_in
+        self._needs_resample: bool = (self._capture_rate != self._target_rate)
 
     def _audio_callback(self, indata, frames, time_info, status):
         if status:
             log.warning(f"Audio input status: {status}")
         data = bytes(indata)
+        if self._needs_resample:
+            data = _resample(data, self._capture_rate, self._target_rate)
         self.online_queue.put(data)
         self.offline_queue.put(data)
 
@@ -105,7 +136,7 @@ class AudioPipeline(AbstractPipeline):
 
         try:
             stream_kwargs = dict(
-                samplerate=settings.sample_rate_in,
+                samplerate=self._capture_rate,
                 blocksize=settings.audio_blocksize,
                 dtype="int16",
                 channels=1,
@@ -123,14 +154,19 @@ class AudioPipeline(AbstractPipeline):
                 if self._device_index is not None
                 else "system default"
             )
+            resample_info = (
+                f" → resampling {self._capture_rate}Hz→{self._target_rate}Hz"
+                if self._needs_resample else ""
+            )
             log.info(
                 f"Microphone stream started — device: '{dev_name}' "
                 f"blocksize={settings.audio_blocksize} "
-                f"rate={settings.sample_rate_in}Hz"
+                f"rate={self._capture_rate}Hz{resample_info}"
             )
         except Exception as e:
             log.error(f"Failed to start microphone: {e}")
             log.error("Tip: set WALLE_MIC_DEVICE=<index or name> in your .env")
+            log.error("Tip: set WALLE_CAPTURE_RATE=44100 if your mic uses 44100 Hz")
 
     async def stop(self) -> None:
         if self._stream:
@@ -144,7 +180,11 @@ class AudioPipeline(AbstractPipeline):
         return {
             "status":              "ok" if self._started else "stopped",
             "device":              str(self._device_index or "default"),
+            "capture_rate":        self._capture_rate,
+            "target_rate":         self._target_rate,
+            "resampling":          self._needs_resample,
             "blocksize":           settings.audio_blocksize,
             "online_queue_size":   self.online_queue.qsize(),
             "offline_queue_size":  self.offline_queue.qsize(),
         }
+

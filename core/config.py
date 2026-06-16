@@ -95,8 +95,15 @@ class WalleConfig:
     silence_duration_ms: int = 600  # VAD silence threshold
 
     # ── Audio ─────────────────────────────────────────────────────────────────
+    # sample_rate_in: target rate delivered to Whisper and Gemini (must be 16000)
     sample_rate_in: int = field(
         default_factory=lambda: int(os.environ.get("WALLE_SAMPLE_RATE", "16000"))
+    )
+    # capture_rate: raw hardware capture rate (set to mic's native rate, e.g. 44100)
+    # If different from sample_rate_in, AudioPipeline resamples automatically.
+    capture_rate: int = field(
+        default_factory=lambda: int(os.environ.get("WALLE_CAPTURE_RATE",
+            os.environ.get("WALLE_SAMPLE_RATE", "16000")))
     )
     sample_rate_out: int = 24000
     # Pi 5: use larger blocksize (4096) to avoid ALSA underruns on ARM

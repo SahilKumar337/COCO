@@ -125,7 +125,8 @@ class AudioPipeline(AbstractPipeline):
     # ── Resample worker — runs in a background daemon thread ─────────────────
 
     def _resample_worker(self):
-        """Drain raw_queue, resample if needed, fan out to downstream queues."""
+        """Drain raw_queue, resample if needed, apply gain, fan out to downstream queues."""
+        gain = settings.mic_gain
         while self._started or not self._raw_queue.empty():
             try:
                 raw = self._raw_queue.get(timeout=0.5)
@@ -133,6 +134,11 @@ class AudioPipeline(AbstractPipeline):
                 continue
             data = _resample(raw, self._capture_rate, self._target_rate) \
                    if self._needs_resample else raw
+            # Apply software gain to compensate for quiet USB mics
+            if gain != 1.0:
+                samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                samples = np.clip(samples * gain, -32768, 32767)
+                data = samples.astype(np.int16).tobytes()
             self.online_queue.put(data)
             self.offline_queue.put(data)
 

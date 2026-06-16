@@ -1,0 +1,16 @@
+# SIFRA AI — Production Dependencies (Cloud-Only)
+
+# Core AI & Server
+google-genai>=1.73.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+gunicorn>=23.0.0
+websockets>=14.0
+
+# Database
+python-dotenv>=1.0.1
+psycopg2-binary>=2.9.9
+
+# Math & Data
+numpy>=1.26.0
+scipy>=1.14.0

@@ -1,0 +1,79 @@
+// ── Chat Messages ───────────────────────────────────────────────────────────
+let currentTurnElement = null;
+let currentTurnRole = null;
+
+function addChatMessage(role, text) {
+    if (!text || text.trim() === "") return;
+
+    // Hide welcome message
+    if (DOM.welcomeMessage) {
+        DOM.welcomeMessage.classList.add('hidden');
+    }
+
+    const container = DOM.chatMessages;
+    
+    // ── SINGLE BUBBLE LOGIC ──
+    // If the same person is still talking, just update their existing bubble
+    if (currentTurnElement && currentTurnRole === role) {
+        const textEl = currentTurnElement.querySelector('.message-text');
+        
+        if (role === 'user') {
+            // User transcripts from Gemini Live are additive/running
+            if (text.length >= textEl.textContent.length) {
+                textEl.textContent = text;
+            }
+        } else {
+            // Assistant sends tokens, so we append them with Smart Spacing
+            const cleanText = text.trim();
+            if (cleanText && !textEl.textContent.includes(cleanText)) {
+                if (textEl.textContent.length > 0 && 
+                    !textEl.textContent.endsWith(' ') && 
+                    !text.startsWith(' ')) {
+                    textEl.textContent += " ";
+                }
+                textEl.textContent += text;
+            }
+        }
+        container.scrollTop = container.scrollHeight;
+        return;
+    }
+
+    // ── NEW BUBBLE LOGIC ──
+    currentTurnRole = role;
+    
+    const messageEl = document.createElement('div');
+    messageEl.className = `chat-message ${role}`;
+    
+    const avatarEl = document.createElement('div');
+    avatarEl.className = 'message-avatar';
+    avatarEl.textContent = role === 'user' ? '👤' : '🥥';
+    
+    const bubbleEl = document.createElement('div');
+    bubbleEl.className = 'message-bubble';
+    
+    const textEl = document.createElement('p');
+    textEl.className = 'message-text';
+    textEl.textContent = text;
+    
+    const timeEl = document.createElement('span');
+    timeEl.className = 'message-time';
+    timeEl.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    bubbleEl.appendChild(textEl);
+    bubbleEl.appendChild(timeEl);
+    
+    if (role === 'user') {
+        messageEl.appendChild(bubbleEl);
+        messageEl.appendChild(avatarEl);
+    } else {
+        messageEl.appendChild(avatarEl);
+        messageEl.appendChild(bubbleEl);
+    }
+    
+    container.appendChild(messageEl);
+    currentTurnElement = messageEl;
+    
+    // Smooth appearance
+    setTimeout(() => messageEl.classList.add('visible'), 10);
+    container.scrollTop = container.scrollHeight;
+}

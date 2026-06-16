@@ -1,0 +1,55 @@
+# /etc/systemd/system/walle.service
+# WALL-E AI — systemd service for Raspberry Pi 5
+# Created by K.Astra and its members.
+#
+# Installed automatically by deploy/pi/install.sh
+# To edit manually: sudo nano /etc/systemd/system/walle.service
+#                   sudo systemctl daemon-reload && sudo systemctl restart walle
+
+[Unit]
+Description=WALL-E AI Voice Assistant Server
+Documentation=https://github.com/kastra/walle-ai
+After=network-online.target sound.target
+Wants=network-online.target
+# Wait for network so Gemini API calls work immediately on boot
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__PROJECT_DIR__
+
+# Load environment from .env file
+EnvironmentFile=__PROJECT_DIR__/.env
+
+# Pi 5 specific: set PYTHONUNBUFFERED so logs appear in journalctl in real time
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# Use the virtual environment's Python
+ExecStart=__VENV_DIR__/bin/python server.py
+
+# Restart automatically if it crashes (e.g., network blip or Gemini quota)
+Restart=on-failure
+RestartSec=5s
+# Give it 30s to gracefully shut down before SIGKILL
+TimeoutStopSec=30
+
+# Resource limits — Pi 5 (8GB RAM): generous but bounded
+# Allow 6GB max to leave headroom for OS + audio buffers
+MemoryMax=6G
+# CPU shares (1024 = normal priority)
+CPUShares=512
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Log to journald (view with: sudo journalctl -u walle -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=walle-ai
+
+[Install]
+WantedBy=multi-user.target

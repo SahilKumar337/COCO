@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Allow: /login
+
+# Block all API and private routes from crawlers
+Disallow: /api/
+Disallow: /ws
+Disallow: /static/js/
+Disallow: /hybridaction/
+
+# Sitemap
+Sitemap: http://localhost:8000/sitemap.xml

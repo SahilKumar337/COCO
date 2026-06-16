@@ -1,0 +1,48 @@
+# ─── Secrets (NEVER upload these) ───────────────────────────────────────────
+.env
+*.key
+*.pem
+secrets/
+
+# ─── Python virtual environments ─────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Python cache ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ─── Database files (contain personal data) ──────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── Logs & temp files ───────────────────────────────────────────────────────
+*.log
+out.txt
+out2.txt
+out3.txt
+out4.txt
+tmp_*
+scratch/
+
+# ─── Face recognition models / audio references ──────────────────────────────
+tmp_model/
+*.wav
+*.mp3
+storage/
+
+# ─── OS files ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE files ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp

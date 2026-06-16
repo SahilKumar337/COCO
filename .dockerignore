@@ -1,0 +1,21 @@
+# Folders to skip for deployment
+venv/
+.venv/
+__pycache__/
+.git/
+.github/
+.vscode/
+
+# Database files (Railway provides its own)
+*.db
+*.sqlite3
+charlie_memory.db
+
+# Large local files
+*.wav
+*.mp3
+*.mp4
+*.png
+*.jpg
+*.jpeg
+!static/assets/coco-logo.png

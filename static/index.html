@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WALL-E AI — Voice Assistant</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=210">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/static/assets/walle-logo.png">
+    <meta name="description" content="WALL-E AI — Professional voice-first AI assistant created by K.Astra and its members.">
+</head>
+
+<body>
+    <div class="wallpaper-base">
+        <div class="wallpaper-orb-1"></div>
+        <div class="wallpaper-orb-2"></div>
+        <div class="wallpaper-noise"></div>
+    </div>
+    <canvas id="particles-canvas"></canvas>
+
+    <div class="app-shell">
+        <!-- ── Top Nav ── -->
+        <nav class="top-nav">
+            <div class="nav-left">
+                <img src="/static/assets/walle-logo.png" alt="WALL-E" class="app-logo">
+                <div class="app-info">
+                    <h1 class="app-title">WALL-E</h1>
+                    <span class="app-badge">Pro</span>
+                </div>
+            </div>
+            <div class="nav-right">
+                <button class="icon-btn theme-toggle-btn" id="theme-toggle-btn" title="Toggle Theme">
+                    <span class="theme-icon-sun">☀️</span>
+                    <span class="theme-icon-moon">🌙</span>
+                </button>
+                <button class="icon-btn" id="settings-btn" title="Settings">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                </button>
+            </div>
+        </nav>
+
+        <!-- ── Main Stage ── -->
+        <main class="main-stage">
+            <!-- Greeting -->
+            <div class="greeting-area" id="greeting-area">
+                <h2 class="greeting-text" id="greeting-text">Hello.</h2>
+                <p class="greeting-sub" id="greeting-sub">What can I help you with?</p>
+            </div>
+
+            <!-- Orb Hub -->
+            <div class="orb-hub">
+                <!-- ── Face: eyes on top, orb = mouth below ── -->
+                <div class="face-scene" id="orb-scene">
+
+                    <!-- Eyes Row -->
+                    <div class="eyes-row">
+                        <canvas class="eye-canvas" id="eye-canvas-left"></canvas>
+                        <canvas class="eye-canvas" id="eye-canvas-right"></canvas>
+                    </div>
+
+                    <!-- Orb / Mouth -->
+                    <div class="orb-container">
+                        <div class="voice-orb idle" id="voice-orb">
+                            <canvas id="orb-canvas"></canvas>
+                            <div class="orb-content" id="orb-core">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z" />
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4m-4 0h8" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="glow-ring ring-1"></div>
+                        <div class="glow-ring ring-2"></div>
+                        <div class="glow-ring ring-3"></div>
+                    </div>
+
+                </div><!-- /face-scene -->
+
+                <div class="orb-status-area">
+                    <p class="status-main" id="orb-status">Ready</p>
+                    <p class="status-sub" id="mode-text">Tap to speak</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- ── Footer ── -->
+        <footer class="bottom-bar">
+            <div class="connection-status">
+                <div class="dot" id="connection-dot"></div>
+                <span id="connection-text">Connecting…</span>
+            </div>
+        </footer>
+
+        <!-- ── Settings Modal Backdrop ── -->
+        <div class="settings-backdrop" id="settings-backdrop"></div>
+
+        <!-- ── Settings Modal ── -->
+        <div class="settings-modal" id="settings-panel">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <div class="modal-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3" />
+                            <path
+                                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                    </div>
+                    <h3 class="modal-title">Settings</h3>
+                </div>
+                <button class="modal-close" id="settings-close">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body">
+
+                <!-- Row: User Info -->
+                <div class="modal-row">
+                    <div class="modal-row-label">
+                        <span class="row-icon">👤</span>
+                        <span>Account</span>
+                    </div>
+                    <div class="modal-row-value">
+                        <span id="settings-creator"></span>
+                    </div>
+                </div>
+
+                <div class="modal-separator"></div>
+
+                <!-- Row: Appearance -->
+                <div class="modal-row">
+                    <div class="modal-row-label">
+                        <span class="row-icon">🎨</span>
+                        <span>Appearance</span>
+                    </div>
+                    <div class="modal-row-value">
+                        <label class="toggle-switch" title="Toggle light/dark theme">
+                            <input type="checkbox" id="settings-theme-toggle">
+                            <span class="toggle-track">
+                                <span class="toggle-thumb"></span>
+                            </span>
+                        </label>
+                        <span class="toggle-mode-label" id="toggle-mode-label">Dark</span>
+                    </div>
+                </div>
+
+                <div class="modal-separator"></div>
+
+                <!-- Row: AI Voice -->
+                <div class="modal-row modal-row-col">
+                    <div class="modal-row-label">
+                        <span class="row-icon">🎙️</span>
+                        <span>AI Voice</span>
+                    </div>
+                    <div class="select-wrapper modal-select-wrap">
+                        <select id="settings-voice" class="styled-select">
+                            <option value="Aoede">Aoede — Professional Female</option>
+                            <option value="Charon">Charon — Professional Male</option>
+                            <option value="Puck">Puck — Warm Male</option>
+                            <option value="Kore">Kore — Warm Female</option>
+                            <option value="Fenrir">Fenrir — Deep Male</option>
+                        </select>
+                        <span class="select-arrow">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5" stroke-linecap="round">
+                                <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="modal-separator"></div>
+
+                <!-- Row: AI Persona -->
+                <div class="modal-row modal-row-col">
+                    <div class="modal-row-label">
+                        <span class="row-icon">🧠</span>
+                        <span>AI Persona</span>
+                    </div>
+                    <textarea id="settings-persona" class="styled-textarea" rows="3"
+                        placeholder="e.g. Professional Executive Assistant"></textarea>
+                </div>
+
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <button id="logout-btn" class="btn-logout">Sign Out</button>
+                <button id="settings-save-btn" class="btn-save">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/orb-renderer.js?v=110"></script>
+    <script src="/static/js/eye-renderer.js?v=304"></script>
+    <script src="/static/js/app.js?v=213"></script>
+</body>
+
+</html>

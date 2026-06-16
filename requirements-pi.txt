@@ -1,0 +1,45 @@
+# WALL-E AI — Raspberry Pi 5 Dependencies
+# Use this file instead of requirements.txt on Raspberry Pi OS (Bookworm/64-bit)
+# Created by K.Astra and its members.
+#
+# Install with:
+#   pip install -r requirements-pi.txt
+#
+# NOTE: Run deploy/pi/install.sh FIRST to install system-level dependencies.
+
+# ─── Core AI ─────────────────────────────────────────────────────────────────
+google-genai>=1.73.0
+
+# ─── Web Server ──────────────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+websockets>=14.0
+
+# ─── Wake Word (Pi 5: int8 quantization for faster ARM inference) ─────────────
+faster-whisper>=1.2.0
+
+# ─── Speaker Recognition ─────────────────────────────────────────────────────
+# PyTorch ARM64 wheel is installed separately by install.sh
+speechbrain>=1.1.0
+
+# ─── Face Recognition (Pi 5: use headless OpenCV + dlib from apt) ────────────
+face_recognition>=1.3.0
+# opencv-python-headless is smaller and faster than opencv-python on Pi
+# (no GUI dependencies — we only need cv2 for frame capture)
+opencv-python-headless>=4.10.0
+
+# ─── Audio I/O ───────────────────────────────────────────────────────────────
+sounddevice>=0.5.0
+scipy>=1.14.0
+
+# ─── Database ────────────────────────────────────────────────────────────────
+# psycopg2-binary for Postgres (optional — SQLite used by default on Pi)
+psycopg2-binary>=2.9.9
+
+# ─── Utilities ───────────────────────────────────────────────────────────────
+numpy>=1.26.0
+python-dotenv>=1.0.1
+
+# ─── Arduino / Navigation (optional) ─────────────────────────────────────────
+pyserial>=3.5
+vosk>=0.3.45

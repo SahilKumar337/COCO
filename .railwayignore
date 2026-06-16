@@ -1,0 +1,25 @@
+# Folders to skip for deployment
+venv/
+.venv/
+__pycache__/
+.git/
+.github/
+.vscode/
+
+# Database files
+*.db
+*.sqlite3
+charlie_memory.db
+
+# Large local files
+*.wav
+*.mp3
+*.mp4
+*.png
+*.jpg
+*.jpeg
+!static/assets/coco-logo.png
+!static/assets/nebula1.png
+!static/assets/nebula2.png
+!static/assets/galaxy.png
+!static/assets/planet.png

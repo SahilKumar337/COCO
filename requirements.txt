@@ -1,0 +1,35 @@
+# WALL-E AI v2.0 — Production Dependencies
+# Created by K.Astra and its members
+# Grouped by pipeline/feature area for clarity.
+
+# ─── Core AI ─────────────────────────────────────────────────────────────────
+google-genai>=1.73.0
+
+# ─── Web Server ──────────────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+websockets>=14.0
+
+# ─── Hardware / Wake Word (main.py mode only) ─────────────────────────────────
+faster-whisper>=1.2.0
+speechbrain>=1.1.0
+
+# ─── Face Recognition (optional — degrades gracefully if absent) ──────────────
+face_recognition>=1.3.0
+opencv-python>=4.10.0
+
+# ─── Audio I/O ───────────────────────────────────────────────────────────────
+sounddevice>=0.5.0
+scipy>=1.14.0
+
+# ─── Database ────────────────────────────────────────────────────────────────
+psycopg2-binary>=2.9.9    # PostgreSQL (production/Railway/Render)
+
+# ─── Utilities ───────────────────────────────────────────────────────────────
+numpy>=1.26.0
+python-dotenv>=1.0.1
+ddgs>=9.0.0                  # Web search (renamed from duckduckgo_search)
+
+# ─── Arduino / Navigation (optional) ─────────────────────────────────────────
+pyserial>=3.5
+vosk>=0.3.45

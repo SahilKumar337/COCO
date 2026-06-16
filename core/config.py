@@ -123,10 +123,10 @@ class WalleConfig:
     speaker_device: str = field(
         default_factory=lambda: os.environ.get("WALLE_SPEAKER_DEVICE", "")
     )
-    # Software gain multiplier for quiet USB mics (1.0 = no gain, 8.0 = 8x boost)
+    # Software gain multiplier for quiet USB mics (1.0 = no gain, 16.0 = 16x boost)
     # Increase if RMS logs show levels below 100 when speaking.
     mic_gain: float = field(
-        default_factory=lambda: float(os.environ.get("WALLE_MIC_GAIN", "8.0"))
+        default_factory=lambda: float(os.environ.get("WALLE_MIC_GAIN", "16.0"))
     )
 
     # ── Wake Word ─────────────────────────────────────────────────────────────

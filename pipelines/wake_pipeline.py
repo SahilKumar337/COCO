@@ -103,12 +103,27 @@ class WakePipeline(AbstractPipeline):
                     # Slide window: drop first 0.5 s to avoid boundary misses
                     del buffer[:int(bytes_per_sec * 0.5)]
 
-                    audio_arr = np.frombuffer(process_buf, dtype="int16")
+                    audio_arr = np.frombuffer(process_buf, dtype="int16").astype(np.float32)
+
+                    # Normalize audio to 60% max amplitude so VAD detects quiet mics
+                    peak = np.abs(audio_arr).max()
+                    if peak > 0:
+                        audio_arr = audio_arr * (32767 * 0.6 / peak)
+                    audio_arr = audio_arr.astype(np.int16)
+
                     tmp = tempfile.mktemp(suffix=".wav")
                     wav.write(tmp, sr, audio_arr)
 
                     segs, _ = self._model.transcribe(
-                        tmp, beam_size=1, language="en", vad_filter=True
+                        tmp,
+                        beam_size=1,
+                        language="en",
+                        vad_filter=True,
+                        vad_parameters={
+                            "threshold": 0.2,              # Lower = more sensitive (default 0.5)
+                            "min_speech_duration_ms": 200, # Detect short words like "wally"
+                            "min_silence_duration_ms": 300,
+                        },
                     )
                     text = " ".join(s.text for s in segs).lower().strip()
 
@@ -123,3 +138,4 @@ class WakePipeline(AbstractPipeline):
             except Exception as e:
                 log.error(f"Wake listener error: {e}")
                 time.sleep(1)
+

@@ -58,14 +58,14 @@ sudo apt-get install -y --no-install-recommends \
     portaudio19-dev \
     alsa-utils pulseaudio pulseaudio-utils \
     \
-    libatlas-base-dev libopenblas-dev \
-    libhdf5-dev libhdf5-serial-dev \
+    libopenblas-dev \
+    libhdf5-dev \
     libjpeg-dev libpng-dev libtiff-dev \
     libavcodec-dev libavformat-dev libswscale-dev \
     libv4l-dev v4l-utils \
     libxvidcore-dev libx264-dev \
     libfontconfig1-dev libcairo2-dev \
-    libgdk-pixbuf2.0-dev libpango1.0-dev \
+    libgdk-pixbuf-2.0-dev libpango1.0-dev \
     libgtk2.0-dev libgtk-3-dev \
     \
     libboost-python-dev libboost-thread-dev \

@@ -105,6 +105,13 @@ class WakePipeline(AbstractPipeline):
 
                     audio_arr = np.frombuffer(process_buf, dtype="int16").astype(np.float32)
 
+                    # Log RMS level to diagnose mic volume issues
+                    rms = np.sqrt(np.mean(audio_arr ** 2))
+                    if rms > 50:
+                        log.info(f"[Audio] RMS={rms:.0f} — speech possible")
+                    else:
+                        log.info(f"[Audio] RMS={rms:.0f} — too quiet (speak louder!)")
+
                     # Normalize audio to 60% max amplitude so VAD detects quiet mics
                     peak = np.abs(audio_arr).max()
                     if peak > 0:

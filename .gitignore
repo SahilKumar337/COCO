@@ -35,7 +35,6 @@ scratch/
 tmp_model/
 *.wav
 *.mp3
-storage/
 
 # ─── OS files ────────────────────────────────────────────────────────────────
 .DS_Store

@@ -79,6 +79,9 @@ After=network-online.target
 Wants=network-online.target
 # Wait for sound subsystem
 After=sound.target
+# Restart limits — prevent crash-loop hammering
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -103,9 +106,6 @@ ExecStart=${PYTHON_BIN} ${PROJECT_DIR}/main.py
 # Restart policy: always restart on crash, wait 5s between attempts
 Restart=on-failure
 RestartSec=5s
-# Limit restart attempts (prevent crash-loop hammering)
-StartLimitIntervalSec=120
-StartLimitBurst=5
 
 # Allow 30s to gracefully shut down before SIGKILL
 TimeoutStopSec=30

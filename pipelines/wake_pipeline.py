@@ -119,15 +119,36 @@ class WakePipeline(AbstractPipeline):
                         language="en",
                         vad_filter=True,
                         vad_parameters={
-                            "threshold": 0.2,              # Lower = more sensitive (default 0.5)
-                            "min_speech_duration_ms": 200, # Detect short words like "wally"
-                            "min_silence_duration_ms": 300,
+                            "threshold": 0.15,             # Very sensitive — catches soft speech
+                            "min_speech_duration_ms": 150, # Catch short words like "wall-e"
+                            "min_silence_duration_ms": 200,
                         },
                     )
-                    text = " ".join(s.text for s in segs).lower().strip()
+                    raw_text = " ".join(s.text for s in segs).lower().strip()
 
-                    if any(v in text for v in settings.wake_variants):
-                        log.info(f"Wake word detected: '{text}'")
+                    # Always log what Whisper heard (critical for debugging)
+                    if raw_text:
+                        log.info(f"[Whisper] heard: '{raw_text}'")
+
+                    # Normalize: remove punctuation/hyphens so "wall-e" == "wall e" == "walle"
+                    import re
+                    text = re.sub(r"[^a-z0-9 ]", "", raw_text)
+
+                    # Expanded variants — covers all realistic Whisper transcriptions of "WALL-E"
+                    _ALL_VARIANTS = set(settings.wake_variants) | {
+                        "wall e",   # Whisper splits the hyphen
+                        "wale",     # common phonetic
+                        "wali",     # South Asian accent
+                        "vali",     # v/w substitution
+                        "walli",    # double-l variant
+                        "woly",     # mishear
+                        "woli",     # mishear
+                        "wole",     # already in defaults
+                        "wall",     # partial word — only if alone
+                    }
+
+                    if any(v in text for v in _ALL_VARIANTS):
+                        log.info(f"Wake word detected: '{raw_text}'")
                         return tmp   # caller must delete
 
                     os.unlink(tmp)

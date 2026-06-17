@@ -74,11 +74,9 @@ sudo tee "$SERVICE_DST" > /dev/null << EOF
 [Unit]
 Description=WALL-E AI Voice Assistant (Hardware Mode)
 Documentation=https://github.com/SahilKumar337/COCO
-# Wait for network so Gemini API works on first boot
-After=network-online.target
-Wants=network-online.target
-# Wait for sound subsystem
-After=sound.target
+# After basic network config (fast) — NOT network-online.target (can block 2-5 min on Wi-Fi)
+# The app handles Gemini API retries itself if internet isn't ready yet.
+After=network.target
 # Restart limits — prevent crash-loop hammering
 StartLimitIntervalSec=120
 StartLimitBurst=5
@@ -97,15 +95,21 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=HOME=/home/${CURRENT_USER}
 
-# Audio server access (PipeWire/PulseAudio need XDG_RUNTIME_DIR)
+# CRITICAL: PipeWire/PulseAudio run as USER services and need XDG_RUNTIME_DIR
+# to find their socket. Without this, sounddevice fails silently on boot.
+Environment=XDG_RUNTIME_DIR=/run/user/$(id -u)
 ${AUDIO_ENV}
+
+# Wait 12 seconds before starting: gives PipeWire time to start its user session
+# and gives Wi-Fi time to get a basic connection (not full internet, just DHCP).
+ExecStartPre=/bin/sleep 12
 
 # Entry point: main.py = hardware mode (wake word + mic + speaker)
 ExecStart=${PYTHON_BIN} ${PROJECT_DIR}/main.py
 
-# Restart policy: always restart on crash, wait 5s between attempts
+# Restart policy: restart on crash, wait 8s between attempts
 Restart=on-failure
-RestartSec=5s
+RestartSec=8s
 
 # Allow 30s to gracefully shut down before SIGKILL
 TimeoutStopSec=30

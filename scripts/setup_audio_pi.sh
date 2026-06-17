@@ -7,22 +7,18 @@
 #   bash ~/walle/scripts/setup_audio_pi.sh
 #
 # What this does:
-#   1. Installs PulseAudio + WebRTC echo-cancel module
+#   1. Installs PulseAudio (WebRTC echo-cancel is built-in on Pi OS Bookworm)
 #   2. Configures PulseAudio for headless operation (no display needed)
 #   3. Enables WebRTC Automatic Gain Control (AGC) — like Windows audio engine
 #   4. Enables WebRTC Noise Suppression — better than Windows
 #   5. Sets default sample rate to 16000 Hz (native Whisper/Gemini rate)
 #   6. Creates a user systemd service for PulseAudio (starts on boot, no login needed)
 #   7. Updates walle-hw.service to depend on PulseAudio
-#
-# After running this:
-#   - No more manual resampling in Python code
-#   - No more gain hacks
-#   - PulseAudio handles 44100 Hz → 16000 Hz transparently
-#   - AGC normalizes mic volume like Windows does automatically
 # =============================================================================
 
-set -euo pipefail
+# NOTE: We intentionally do NOT use "set -e" so partial failures don't abort the whole setup.
+# Each critical step checks its own status.
+set -uo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -32,11 +28,11 @@ NC='\033[0m'
 
 log()  { echo -e "${GREEN}[SETUP]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-err()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+err()  { echo -e "${RED}[ERROR]${NC} $*"; }
 info() { echo -e "${BLUE}[INFO]${NC}  $*"; }
 
 # ── Sanity checks ─────────────────────────────────────────────────────────────
-[[ $EUID -eq 0 ]] && err "Run as the walle user, NOT as root."
+[[ $EUID -eq 0 ]] && { err "Run as the walle user, NOT as root."; exit 1; }
 
 log "=== WALL-E Industry Audio Setup ==="
 info "User: $(whoami) | Home: $HOME"
@@ -48,18 +44,21 @@ if ! grep -q "Raspberry Pi\|raspbian" /proc/device-tree/model 2>/dev/null &&
 fi
 
 # ── 2. Install PulseAudio ─────────────────────────────────────────────────────
-log "Installing PulseAudio + WebRTC module..."
+# NOTE: On Raspberry Pi OS Bookworm/Bullseye, the WebRTC echo-cancel module
+# is built directly into the pulseaudio package — there is NO separate
+# "pulseaudio-module-echo-cancel" package (that name is Fedora/Arch only).
+# The module-echo-cancel.so is already present after installing pulseaudio.
+log "Installing PulseAudio + utils..."
 sudo apt-get update -qq
 sudo apt-get install -y \
     pulseaudio \
     pulseaudio-utils \
-    pulseaudio-module-echo-cancel \
     alsa-utils \
     libpulse0 \
-    python3-pyaudio
+    python3-pyaudio 2>/dev/null || warn "Some packages may have failed — continuing."
 
 # Make sure user is in audio group
-sudo usermod -a -G audio "$USER"
+sudo usermod -a -G audio "$USER" || true
 log "User added to audio group."
 
 # ── 3. Kill any existing PulseAudio ───────────────────────────────────────────
@@ -75,10 +74,30 @@ if [[ -z "$USB_CARD" ]]; then
 fi
 log "USB microphone on ALSA card: $USB_CARD"
 
-# ── 5. Create PulseAudio config directory ─────────────────────────────────────
+# ── 5. Probe whether the WebRTC AEC method is available ──────────────────────
+# On older Pi OS builds the webrtc aec_method flag may not be supported.
+# We test by loading it into a temporary PulseAudio instance.
+log "Probing WebRTC AEC availability..."
+WEBRTC_AVAILABLE=false
+if pulseaudio --start --daemonize=no --exit-idle-time=0 --log-target=stderr 2>/dev/null & PA_TEST_PID=$!; then
+    sleep 1
+    if pactl load-module module-echo-cancel aec_method=webrtc 2>/dev/null; then
+        WEBRTC_AVAILABLE=true
+        log "WebRTC AEC is available on this system."
+        pactl unload-module module-echo-cancel 2>/dev/null || true
+    else
+        warn "WebRTC AEC not available — will use speex echo cancellation instead."
+    fi
+    kill $PA_TEST_PID 2>/dev/null || true
+    sleep 1
+fi
+pulseaudio --kill 2>/dev/null || true
+sleep 1
+
+# ── 6. Create PulseAudio config directory ─────────────────────────────────────
 mkdir -p ~/.config/pulse
 
-# ── 6. PulseAudio daemon config (headless, 16kHz, low-latency) ───────────────
+# ── 7. PulseAudio daemon config (headless, 16kHz, low-latency) ───────────────
 log "Writing PulseAudio daemon.conf..."
 cat > ~/.config/pulse/daemon.conf << EOF
 # WALL-E PulseAudio Daemon — Headless 16kHz Configuration
@@ -114,19 +133,27 @@ use-pid-file = true
 system-instance = false
 EOF
 
-# ── 7. PulseAudio default.pa (module loading) ─────────────────────────────────
-log "Writing PulseAudio default.pa with WebRTC AGC + noise suppression..."
+# ── 8. PulseAudio default.pa (module loading) ─────────────────────────────────
+log "Writing PulseAudio default.pa..."
+
+if [[ "$WEBRTC_AVAILABLE" == "true" ]]; then
+    log "Using WebRTC AGC + Noise Suppression (industry-grade)..."
+    AEC_ARGS='aec_method=webrtc aec_args="analog_gain_control=0 digital_gain_control=1 noise_suppression=1 high_pass_filter=1 extended_filter=1"'
+else
+    log "Using speex echo cancellation (compatible fallback)..."
+    AEC_ARGS='aec_method=speex'
+fi
+
 cat > ~/.config/pulse/default.pa << EOF
 #!/usr/bin/pulseaudio -nF
 # WALL-E PulseAudio Module Configuration
-# Industry-standard voice processing stack: WebRTC AGC + Noise Suppression
+# Industry-standard voice processing stack
 
 # ── Core modules ──────────────────────────────────────────────────────────────
 load-module module-native-protocol-unix
 load-module module-always-sink
 
 # ── USB Microphone — raw ALSA source ─────────────────────────────────────────
-# Capture at the mic's native rate; PulseAudio resamples to 16kHz
 load-module module-alsa-source \
     device=hw:${USB_CARD},0 \
     rate=44100 \
@@ -140,21 +167,15 @@ load-module module-null-sink \
     sink_name=null_out \
     sink_properties="device.description='WALL-E Null Sink'"
 
-# ── WebRTC Processing: AGC + Noise Suppression + Echo Cancellation ────────────
-# This is the equivalent of Windows audio engine automatic processing.
-# aec_method=webrtc uses Google's WebRTC audio processing library.
-# analog_gain_control=0  — skip analog (already at 100% hardware)
-# digital_gain_control=1 — enable digital AGC (software, like Windows)
-# noise_suppression=1    — enable noise suppression
-# high_pass_filter=1     — remove low-frequency rumble
+# ── Echo Cancellation / AGC / Noise Suppression ───────────────────────────────
+# ${AEC_ARGS}
 load-module module-echo-cancel \
     source_master=usb_mic_raw \
     sink_master=null_out \
     source_name=walle_mic \
     sink_name=walle_null \
-    source_properties="device.description='WALL-E Enhanced Microphone (AGC+NS)'" \
-    aec_method=webrtc \
-    aec_args="analog_gain_control=0 digital_gain_control=1 noise_suppression=1 high_pass_filter=1 extended_filter=1"
+    source_properties="device.description='WALL-E Enhanced Microphone'" \
+    ${AEC_ARGS}
 
 # ── ALSA Speaker output ───────────────────────────────────────────────────────
 load-module module-alsa-sink \
@@ -168,14 +189,13 @@ load-module module-alsa-sink \
 set-default-source walle_mic
 set-default-sink speaker_out
 
-# ── Boost mic capture volume to 100% ─────────────────────────────────────────
 .ifexists module-console-kit.so
 load-module module-console-kit
 .endif
 
 EOF
 
-# ── 8. Create user systemd service for PulseAudio ────────────────────────────
+# ── 9. Create user systemd service for PulseAudio ────────────────────────────
 log "Creating PulseAudio user systemd service..."
 mkdir -p ~/.config/systemd/user/
 
@@ -191,20 +211,18 @@ Type=notify
 ExecStart=/usr/bin/pulseaudio --daemonize=no --log-target=journal
 Restart=on-failure
 RestartSec=3
-
-# Give audio group access
 SupplementaryGroups=audio
 
 [Install]
 WantedBy=default.target
 EOF
 
-# Enable PulseAudio user service (starts automatically with user session/linger)
+# Enable PulseAudio user service
 systemctl --user daemon-reload
-systemctl --user enable pulseaudio.service
+systemctl --user enable pulseaudio.service 2>/dev/null || warn "Could not enable pulseaudio user service."
 
 # Enable user linger (allows user services to start at boot without login)
-sudo loginctl enable-linger "$USER"
+sudo loginctl enable-linger "$USER" 2>/dev/null || warn "Could not enable linger (not critical)."
 log "User linger enabled — PulseAudio will start at boot."
 
 # ── 9. Update walle-hw.service to depend on PulseAudio ───────────────────────

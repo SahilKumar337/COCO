@@ -77,9 +77,25 @@ async def run():
             log.info(f"Waiting for wake word {settings.wake_variants}...")
             audio_file_path = await wake_pipeline.wait_for_wake()
 
-            # ── Identify speaker ───────────────────────────────────────────────
+            # ── Identify speaker (async, with timeout) ────────────────────────
+            # Run identity check in the background so it overlaps with
+            # session/prompt preparation. 2-second timeout prevents SpeechBrain
+            # CPU inference from blocking WALL-E's first response.
             log.info("Analyzing identity...")
-            speaker_name = await identity_pipeline.identify(audio_file_path)
+            identity_task = asyncio.create_task(
+                identity_pipeline.identify(audio_file_path)
+            )
+
+            try:
+                speaker_name = await asyncio.wait_for(
+                    asyncio.shield(identity_task), timeout=2.0
+                )
+            except asyncio.TimeoutError:
+                # Identity still running — use Unknown for now and let it
+                # finish in the background (result is discarded this cycle).
+                speaker_name = "Unknown"
+                log.info("Identity check timed out (>2s on Pi CPU) — starting as Unknown")
+
             log.info(f"Speaker identified: {speaker_name}")
 
             # Clean up temp audio file

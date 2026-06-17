@@ -74,12 +74,12 @@ sudo tee "$SERVICE_DST" > /dev/null << EOF
 [Unit]
 Description=WALL-E AI Voice Assistant (Hardware Mode)
 Documentation=https://github.com/SahilKumar337/COCO
-# After basic network config (fast) — NOT network-online.target (can block 2-5 min on Wi-Fi)
-# The app handles Gemini API retries itself if internet isn't ready yet.
-After=network.target
+# Start after basic system is up (NOT network-online — WiFi DHCP can hang 2-3 min)
+# Gemini API retries internally, so we don't need to block boot on network.
+After=multi-user.target
 # Restart limits — prevent crash-loop hammering
-StartLimitIntervalSec=120
-StartLimitBurst=5
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -95,21 +95,23 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=HOME=/home/${CURRENT_USER}
 
-# CRITICAL: PipeWire/PulseAudio run as USER services and need XDG_RUNTIME_DIR
-# to find their socket. Without this, sounddevice fails silently on boot.
-Environment=XDG_RUNTIME_DIR=/run/user/$(id -u)
+# Audio server access (PipeWire/PulseAudio need XDG_RUNTIME_DIR)
 ${AUDIO_ENV}
 
-# Wait 12 seconds before starting: gives PipeWire time to start its user session
-# and gives Wi-Fi time to get a basic connection (not full internet, just DHCP).
-ExecStartPre=/bin/sleep 12
+# Wait 8 seconds after boot before starting so PipeWire/audio can fully init.
+# Without this, sounddevice fails to open the audio stream on cold boot.
+ExecStartPre=/bin/sleep 8
 
 # Entry point: main.py = hardware mode (wake word + mic + speaker)
 ExecStart=${PYTHON_BIN} ${PROJECT_DIR}/main.py
 
-# Restart policy: restart on crash, wait 8s between attempts
+# Restart policy: wait 10s between restart attempts (models take time to load)
 Restart=on-failure
-RestartSec=8s
+RestartSec=10s
+
+# Give WALL-E 5 minutes to start — it loads 3 AI models (Whisper + SpeechBrain + Vosk)
+# which takes 60-120 seconds on Pi CPU. Without this systemd may kill it too early.
+TimeoutStartSec=300
 
 # Allow 30s to gracefully shut down before SIGKILL
 TimeoutStopSec=30

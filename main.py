@@ -25,7 +25,7 @@ load_dotenv()
 from core.config import settings
 from core.logger import get_logger
 from core.registry import registry
-from core.tts import say_boot_ready, say_session_start, say_connectivity_error, say_quota_error
+from core.tts import speak, say_boot_ready, say_session_start, say_connectivity_error, say_quota_error
 from pipelines.audio_pipeline import AudioPipeline
 from pipelines.wake_pipeline import WakePipeline
 from pipelines.identity_pipeline import IdentityPipeline
@@ -50,6 +50,11 @@ async def run():
         log.info("Migrating old JSON memory to database...")
         migrate_from_json()
 
+    # ── Early boot greeting ────────────────────────────────────────────────────
+    # Speak IMMEDIATELY on startup so user knows Pi is alive.
+    # This plays within ~10 seconds of boot, long before AI models finish loading.
+    speak("Hi! I am WALL-E. Loading AI systems, please wait a moment.", block=False)
+
     # ── Boot pipelines ─────────────────────────────────────────────────────────
     audio_pipeline    = registry.register(AudioPipeline())
     identity_pipeline = registry.register(IdentityPipeline())
@@ -61,7 +66,7 @@ async def run():
     # ── Face engine (not a pipeline — runs its own thread) ────────────────────
     face_engine = FaceEngine()
 
-    # ── Start everything ───────────────────────────────────────────────────────
+    # ── Start everything (loads Whisper + SpeechBrain + Vosk — takes 60-90s on Pi) ─
     await registry.start_all()
 
     if FACE_AVAILABLE:
@@ -72,9 +77,7 @@ async def run():
     log.info(f"Anti-impersonation: ENABLED — owner requires strict voiceprint")
     log.info(f"Face recognition: {'ENABLED' if FACE_AVAILABLE else 'DISABLED (voice only)'}")
 
-    # ── Boot greeting — let user know WALL-E is ready ──────────────────────────
-    # Plays "Hi! I am WALL-E. Say my name to wake me up."
-    # Non-blocking: plays in background while main loop starts.
+    # ── Ready greeting — all models loaded, now listening ─────────────────────
     say_boot_ready()
 
     try:

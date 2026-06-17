@@ -9,8 +9,10 @@ Created by K.Astra and its members.
 """
 
 import asyncio
+import collections
 import os
 import queue
+import re
 import tempfile
 import time
 
@@ -23,12 +25,32 @@ from core.logger import get_logger
 
 log = get_logger("pipeline.wake")
 
+# Wake word variants — covers all realistic Whisper transcriptions of "WALL-E"
+# NOTE: "wall" alone is intentionally excluded — too many false positives
+# from background speech (e.g. "wall street", "stonewall", video content).
+_WAKE_VARIANTS = {
+    "wall-e",   # canonical
+    "walle",    # no hyphen
+    "wally",    # common mishear
+    "wall e",   # Whisper splits the hyphen
+    "wale",     # phonetic shortening
+    "wali",     # South Asian accent variant
+    "vali",     # v/w substitution (Hindi speakers)
+    "walli",    # double-l variant
+    "woly",     # mishear
+    "woli",     # mishear
+}
+
 
 class WakePipeline(AbstractPipeline):
     """
     Wake word detection pipeline using faster-whisper (tiny model).
     Runs a sliding window over the audio queue and transcribes chunks
     looking for any of the configured wake_variants.
+
+    Uses dynamic noise floor gating: only runs Whisper when the current
+    audio chunk is significantly louder than the recent ambient RMS.
+    This prevents false positives from TV/video background audio.
 
     Usage:
         wake = WakePipeline(audio_queue)
@@ -72,7 +94,7 @@ class WakePipeline(AbstractPipeline):
         return {
             "status": "ok" if self._ready else "not_ready",
             "model": "whisper-tiny",
-            "wake_variants": settings.wake_variants,
+            "wake_variants": list(_WAKE_VARIANTS | set(settings.wake_variants)),
         }
 
     async def wait_for_wake(self) -> str:
@@ -86,12 +108,33 @@ class WakePipeline(AbstractPipeline):
 
     def _listen_blocking(self) -> str:
         """Blocking wake word listener. Runs in a thread pool executor."""
-        sr = settings.sample_rate_in
-        bytes_per_sec = sr * 2  # int16 = 2 bytes
-        chunk_bytes = int(bytes_per_sec * (settings.wake_chunk_ms / 1000.0))
-        buffer = bytearray()
+        sr             = settings.sample_rate_in
+        bytes_per_sec  = sr * 2  # int16 = 2 bytes
+        chunk_bytes    = int(bytes_per_sec * (settings.wake_chunk_ms / 1000.0))
+        buffer         = bytearray()
 
-        log.info(f"Listening for wake word: {settings.wake_variants}")
+        # ── Dynamic noise floor tracking ──────────────────────────────────────
+        # We keep a rolling window of recent RMS values to estimate the
+        # ambient noise level. Whisper is only invoked when the current chunk
+        # RMS is at least TRIGGER_RATIO × noise_floor.
+        #
+        # Why: If a YouTube video plays at RMS=5000 continuously, the noise
+        # floor adapts to ~5000. The user's voice close to the mic spikes to
+        # ~15000+, which is >> 1.8× above floor and triggers Whisper.
+        # The background video audio at constant ~5000 never triggers.
+        NOISE_WINDOW   = 20       # number of recent chunks to track (≈30 s)
+        TRIGGER_RATIO  = 1.8      # speak must be 1.8× louder than background
+        MIN_FLOOR      = 300      # minimum noise floor (quiet room baseline)
+        recent_rms     = collections.deque(maxlen=NOISE_WINDOW)
+        chunks_skipped = 0
+
+        all_variants = _WAKE_VARIANTS | set(settings.wake_variants)
+
+        log.info(f"Listening for wake word: {sorted(all_variants)}")
+        log.info(
+            f"[Noise gate] trigger ratio={TRIGGER_RATIO}x | "
+            f"window={NOISE_WINDOW} chunks | min_floor={MIN_FLOOR}"
+        )
 
         while True:
             try:
@@ -104,11 +147,32 @@ class WakePipeline(AbstractPipeline):
                     del buffer[:int(bytes_per_sec * 0.5)]
 
                     audio_arr = np.frombuffer(process_buf, dtype="int16").astype(np.float32)
+                    rms = float(np.sqrt(np.mean(audio_arr ** 2)))
 
-                    # Log RMS to monitor mic levels
-                    rms = np.sqrt(np.mean(audio_arr ** 2))
-                    log.info(f"[Audio] RMS={rms:.0f}")
+                    # Compute current noise floor from recent history
+                    noise_floor = max(
+                        np.mean(recent_rms) if recent_rms else MIN_FLOOR,
+                        MIN_FLOOR
+                    )
+                    recent_rms.append(rms)
 
+                    log.info(f"[Audio] RMS={rms:.0f}  floor={noise_floor:.0f}")
+
+                    # ── Noise gate: skip Whisper if not loud enough ───────────
+                    if rms < noise_floor * TRIGGER_RATIO:
+                        chunks_skipped += 1
+                        if chunks_skipped % 10 == 0:
+                            log.info(
+                                f"[Noise gate] Blocked {chunks_skipped} chunks below "
+                                f"threshold ({noise_floor * TRIGGER_RATIO:.0f}). "
+                                f"Speak louder or closer to mic."
+                            )
+                        continue  # don't run Whisper on background noise
+
+                    chunks_skipped = 0  # reset counter when voice is detected
+                    log.info(f"[Noise gate] PASS — running Whisper (RMS {rms:.0f} > {noise_floor * TRIGGER_RATIO:.0f})")
+
+                    # ── Run Whisper ───────────────────────────────────────────
                     audio_int16 = audio_arr.astype(np.int16)
                     tmp = tempfile.mktemp(suffix=".wav")
                     wav.write(tmp, sr, audio_int16)
@@ -119,8 +183,8 @@ class WakePipeline(AbstractPipeline):
                         language="en",
                         vad_filter=True,
                         vad_parameters={
-                            "threshold": 0.15,             # Very sensitive — catches soft speech
-                            "min_speech_duration_ms": 150, # Catch short words like "wall-e"
+                            "threshold": 0.2,
+                            "min_speech_duration_ms": 150,
                             "min_silence_duration_ms": 200,
                         },
                     )
@@ -130,24 +194,10 @@ class WakePipeline(AbstractPipeline):
                     if raw_text:
                         log.info(f"[Whisper] heard: '{raw_text}'")
 
-                    # Normalize: remove punctuation/hyphens so "wall-e" == "wall e" == "walle"
-                    import re
+                    # Normalize: remove punctuation so "wall-e" == "wall e" == "walle"
                     text = re.sub(r"[^a-z0-9 ]", "", raw_text)
 
-                    # Expanded variants — covers all realistic Whisper transcriptions of "WALL-E"
-                    # NOTE: "wall" alone is intentionally excluded — too many false positives
-                    # from background speech (e.g. "wall street", "stonewall", video content).
-                    _ALL_VARIANTS = set(settings.wake_variants) | {
-                        "wall e",   # Whisper splits the hyphen: "wall e"
-                        "wale",     # common phonetic shortening
-                        "wali",     # South Asian accent variant
-                        "vali",     # v/w substitution common in Hindi speakers
-                        "walli",    # double-l variant
-                        "woly",     # mishear
-                        "woli",     # mishear
-                    }
-
-                    if any(v in text for v in _ALL_VARIANTS):
+                    if any(v in text for v in all_variants):
                         log.info(f"Wake word detected: '{raw_text}'")
                         return tmp   # caller must delete
 
@@ -158,4 +208,3 @@ class WakePipeline(AbstractPipeline):
             except Exception as e:
                 log.error(f"Wake listener error: {e}")
                 time.sleep(1)
-

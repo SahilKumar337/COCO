@@ -120,11 +120,13 @@ class WakePipeline(AbstractPipeline):
         #
         # Why: If a YouTube video plays at RMS=5000 continuously, the noise
         # floor adapts to ~5000. The user's voice close to the mic spikes to
-        # ~15000+, which is >> 1.8× above floor and triggers Whisper.
+        # ~15000+, which is >> 1.4× above floor and triggers Whisper.
         # The background video audio at constant ~5000 never triggers.
         NOISE_WINDOW   = 20       # number of recent chunks to track (≈30 s)
-        TRIGGER_RATIO  = 1.8      # speak must be 1.8× louder than background
+        TRIGGER_RATIO  = 1.4      # voice must be 1.4× louder than background
         MIN_FLOOR      = 300      # minimum noise floor (quiet room baseline)
+        MAX_FLOOR      = 3000     # cap — prevents threshold from being unreachable
+                                  # in loud rooms (e.g. fan, AC, background TV)
         recent_rms     = collections.deque(maxlen=NOISE_WINDOW)
         chunks_skipped = 0
 
@@ -149,10 +151,13 @@ class WakePipeline(AbstractPipeline):
                     audio_arr = np.frombuffer(process_buf, dtype="int16").astype(np.float32)
                     rms = float(np.sqrt(np.mean(audio_arr ** 2)))
 
-                    # Compute current noise floor from recent history
-                    noise_floor = max(
-                        np.mean(recent_rms) if recent_rms else MIN_FLOOR,
-                        MIN_FLOOR
+                    # Compute current noise floor from recent history, capped
+                    noise_floor = min(
+                        max(
+                            np.mean(recent_rms) if recent_rms else MIN_FLOOR,
+                            MIN_FLOOR
+                        ),
+                        MAX_FLOOR   # never let threshold become physically unreachable
                     )
                     recent_rms.append(rms)
 
@@ -165,7 +170,7 @@ class WakePipeline(AbstractPipeline):
                             log.info(
                                 f"[Noise gate] Blocked {chunks_skipped} chunks below "
                                 f"threshold ({noise_floor * TRIGGER_RATIO:.0f}). "
-                                f"Speak louder or closer to mic."
+                                f"Speak louder or hold mic closer (10-20cm from mouth)."
                             )
                         continue  # don't run Whisper on background noise
 

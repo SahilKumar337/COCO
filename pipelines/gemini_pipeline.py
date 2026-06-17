@@ -188,10 +188,17 @@ class _HardwareAudioPlayer:
                 chunk = bytes(self._buffer[:needed])
                 del self._buffer[:needed]
             elif avail > 0:
+                # Last chunk — buffer is about to drain
                 chunk = bytes(self._buffer) + b"\x00" * (needed - avail)
                 self._buffer.clear()
+                # CRITICAL: clear _speaking so mic input is no longer suppressed.
+                # Without this, all user speech after the first response becomes
+                # silence and WALL-E never hears the user again.
+                self._speaking.clear()
             else:
                 chunk = b"\x00" * needed
+                # Buffer already empty — ensure _speaking is cleared
+                self._speaking.clear()
         outdata[:] = self._np.frombuffer(chunk, dtype=self._np.int16).reshape(-1, 1)
 
     def enqueue(self, data: bytes):

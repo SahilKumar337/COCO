@@ -25,6 +25,7 @@ load_dotenv()
 from core.config import settings
 from core.logger import get_logger
 from core.registry import registry
+from core.tts import say_boot_ready, say_session_start, say_connectivity_error, say_quota_error
 from pipelines.audio_pipeline import AudioPipeline
 from pipelines.wake_pipeline import WakePipeline
 from pipelines.identity_pipeline import IdentityPipeline
@@ -71,6 +72,11 @@ async def run():
     log.info(f"Anti-impersonation: ENABLED — owner requires strict voiceprint")
     log.info(f"Face recognition: {'ENABLED' if FACE_AVAILABLE else 'DISABLED (voice only)'}")
 
+    # ── Boot greeting — let user know WALL-E is ready ──────────────────────────
+    # Plays "Hi! I am WALL-E. Say my name to wake me up."
+    # Non-blocking: plays in background while main loop starts.
+    say_boot_ready()
+
     try:
         while True:
             # ── Wait for wake word ─────────────────────────────────────────────
@@ -97,6 +103,11 @@ async def run():
                 log.info("Identity check timed out (>2s on Pi CPU) — starting as Unknown")
 
             log.info(f"Speaker identified: {speaker_name}")
+
+            # ── Wake greeting — spoken immediately while Gemini connects ──────
+            # This bridges the 1-3 second Gemini WebSocket startup gap so the
+            # user gets instant audio confirmation that WALL-E heard them.
+            say_session_start(speaker_name)
 
             # Clean up temp audio file
             try:
@@ -141,11 +152,17 @@ async def run():
 
             except Exception as e:
                 err_str = str(e).lower()
-                if "quota" in err_str or "1011" in err_str:
+                if "quota" in err_str:
                     log.warning("API quota exceeded — waiting 30s before retry.")
+                    say_quota_error()
                     await asyncio.sleep(30)
+                elif "1011" in err_str or "1008" in err_str or "unavailable" in err_str or "connect" in err_str:
+                    log.warning(f"Gemini connectivity error: {e}")
+                    say_connectivity_error()
+                    await asyncio.sleep(5)
                 else:
                     log.error(f"Session error: {e}")
+                    say_connectivity_error()
                     await asyncio.sleep(2)
 
     finally:

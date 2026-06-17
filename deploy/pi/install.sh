@@ -57,6 +57,7 @@ sudo apt-get install -y --no-install-recommends \
     \
     portaudio19-dev \
     alsa-utils pulseaudio pulseaudio-utils \
+    espeak-ng \
     \
     libopenblas-dev \
     libhdf5-dev \

@@ -135,16 +135,16 @@ class WakePipeline(AbstractPipeline):
                     text = re.sub(r"[^a-z0-9 ]", "", raw_text)
 
                     # Expanded variants — covers all realistic Whisper transcriptions of "WALL-E"
+                    # NOTE: "wall" alone is intentionally excluded — too many false positives
+                    # from background speech (e.g. "wall street", "stonewall", video content).
                     _ALL_VARIANTS = set(settings.wake_variants) | {
-                        "wall e",   # Whisper splits the hyphen
-                        "wale",     # common phonetic
-                        "wali",     # South Asian accent
-                        "vali",     # v/w substitution
+                        "wall e",   # Whisper splits the hyphen: "wall e"
+                        "wale",     # common phonetic shortening
+                        "wali",     # South Asian accent variant
+                        "vali",     # v/w substitution common in Hindi speakers
                         "walli",    # double-l variant
                         "woly",     # mishear
                         "woli",     # mishear
-                        "wole",     # already in defaults
-                        "wall",     # partial word — only if alone
                     }
 
                     if any(v in text for v in _ALL_VARIANTS):

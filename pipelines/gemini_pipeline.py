@@ -390,6 +390,13 @@ class WalleSession:
                         self.stream_active = True
                         retry_delay = 1.5  # reset backoff on successful connect
 
+                        # Send a system prompt so Gemini natively speaks the greeting.
+                        # This ensures the greeting is played exactly when the mic becomes active,
+                        # and Gemini's own VAD will prevent it from hearing its own echo!
+                        await self.gemini_queue.put({
+                            "system_event": "The user just woke you up. Acknowledge them by saying exactly: 'Hi! I am WALL-E. How may I help you?'"
+                        })
+
                         tasks = [
                             asyncio.create_task(self._pipeline_send(session)),
                             asyncio.create_task(self._pipeline_recv(session, on_sleep_callback)),

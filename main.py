@@ -120,10 +120,9 @@ async def run():
 
             log.info(f"Speaker identified: {speaker_name}")
 
-            # ── Wake greeting — spoken immediately while Gemini connects ──────
-            # This bridges the 1-3 second Gemini WebSocket startup gap so the
-            # user gets instant audio confirmation that WALL-E heard them.
-            say_session_start(speaker_name)
+            # ── Wake greeting ─────────────────────────────────────────────────
+            # We now use Gemini's native voice for the greeting (handled in gemini_pipeline.py).
+            # This guarantees the mic is actively listening exactly when the greeting plays!
 
             # Clean up temp audio file
             try:

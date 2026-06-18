@@ -318,9 +318,12 @@ class WalleSession:
         return types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             system_instruction=types.Content(parts=[types.Part(text=prompt)]),
-            # RealtimeInputConfig is intentionally omitted: AutomaticActivityDetection
-            # is not supported on all model variants and causes 1008 errors.
-            # Gemini Live has built-in server-side VAD by default.
+            # Use Gemini's built-in server-side VAD
+            realtime_input_config=types.RealtimeInputConfig(
+                automatic_activity_detection=types.AutomaticActivityDetection(
+                    silence_duration_ms=settings.silence_duration_ms
+                )
+            ),
             tools=[
                 types.Tool(function_declarations=tool_registry.declarations),
             ],
@@ -466,24 +469,12 @@ class WalleSession:
                     if "tool_response" in cmd:
                         await session.send_tool_response(function_responses=cmd["tool_response"])
                         # Tool response is now with Gemini — safe to clear the pending flag.
-                        # _processing_tool stays True until Gemini's next turn_complete.
                         self._pending_tool_response = False
                     elif "turn_complete" in cmd:
-                        # Server-side VAD might stay open forever due to Pi background noise.
-                        # Explicitly send a blank message to force response.
-                        try:
-                            await session.send_client_content(
-                                turns=types.Content(
-                                    role="user",
-                                    parts=[types.Part(text=" ")]
-                                ),
-                                turn_complete=True,
-                            )
-                        except Exception as e:
-                            log.debug(f"Failed to send end_of_turn: {e}")
-                            
+                        # Server-side VAD manages the turn automatically.
+                        # Pause streaming briefly to let handshake process.
                         self._audio_paused = True
-                        await asyncio.sleep(0.1)  # Brief pause to reset
+                        await asyncio.sleep(0.015)
                         self._audio_paused = False
                     elif "system_event" in cmd:
                         try:
@@ -505,7 +496,6 @@ class WalleSession:
 
                 # Pull audio from the appropriate source
                 # CRITICAL: Do NOT send audio while a tool call is being processed.
-                # Sending audio during tool execution causes Gemini 1008 errors.
                 if self._processing_tool:
                     await asyncio.sleep(0.01)
                     continue
@@ -514,72 +504,31 @@ class WalleSession:
                 if not audio_bytes:
                     continue
 
-                # If AI is speaking, zero out the microphone input to prevent echo and self-interruption
+                # If AI is speaking, zero out the microphone input to prevent echo loop
                 if self.mode == "hardware" and self._hw_player and self._hw_player.is_speaking():
                     audio_bytes = b"\x00" * len(audio_bytes)
-                    self._is_user_speaking = False
-                    self._silence_timer = 0.0
 
-                # ── Local VAD logic (Fast cut-off) ───────────────────────
-                if self.mode == "hardware" and not self._audio_paused and not self._processing_tool:
-                    import numpy as np
-                    arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
-                    rms = float(np.sqrt(np.mean(arr**2)))
-                    
-                    # Dynamic Noise Floor Tracking
-                    MIN_FLOOR = 300
-                    MAX_FLOOR = 3000
-                    TRIGGER_RATIO = 1.25
-                    
-                    noise_floor = min(
-                        max(np.mean(self._noise_window) if self._noise_window else MIN_FLOOR, MIN_FLOOR),
-                        MAX_FLOOR
-                    )
-                    
-                    # Detect if user is actively speaking (lower threshold to 700 for soft speech)
-                    is_speech = rms > (noise_floor * TRIGGER_RATIO) or rms > 700
-                    
-                    if is_speech:
-                        self._is_user_speaking = True
-                        self._silence_timer = 0.0
-                    elif self._is_user_speaking:
-                        chunk_duration = len(audio_bytes) / (2 * settings.sample_rate_in)
-                        self._silence_timer += chunk_duration
-                        
-                        # If silent for more than config threshold (default 2000ms)
-                        if self._silence_timer > (settings.silence_duration_ms / 1000.0):
-                            log.info(f"Local VAD detected silence (RMS {rms:.0f} near floor {noise_floor:.0f}) — forcing turn_complete.")
-                            await self.gemini_queue.put({"turn_complete": True})
-                            self._is_user_speaking = False
-                            self._silence_timer = 0.0
-                            
-                    # Mute the mic feed to Gemini when not in a speaking turn
-                    # This prevents background static/hiss from streaming and confusing Gemini
-                    if not self._is_user_speaking:
-                        self._noise_window.append(rms)
-                        audio_bytes = b"\x00" * len(audio_bytes)
-
-                    try:
-                        await session.send_realtime_input(
-                            audio=types.Blob(
-                                data=audio_bytes,
-                                mime_type=f"audio/pcm;rate={settings.sample_rate_in}"
-                            )
+                try:
+                    await session.send_realtime_input(
+                        audio=types.Blob(
+                            data=audio_bytes,
+                            mime_type=f"audio/pcm;rate={settings.sample_rate_in}"
                         )
-                        if self.mode == "hardware":
-                            with self._mic_buffer_lock:
-                                self._mic_buffer.extend(audio_bytes)
-                                excess = len(self._mic_buffer) - self._MIC_BUF_BYTES
-                                if excess > 0:
-                                    del self._mic_buffer[:excess]
-                    except Exception as e:
-                        err = str(e)
-                        if "1000" in err or "ConnectionClosed" in type(e).__name__:
-                            log.info("Gemini session closed cleanly.")
-                        else:
-                            log.error(f"Send error: {e}")
-                        self.stream_active = False
-                        break
+                    )
+                    if self.mode == "hardware":
+                        with self._mic_buffer_lock:
+                            self._mic_buffer.extend(audio_bytes)
+                            excess = len(self._mic_buffer) - self._MIC_BUF_BYTES
+                            if excess > 0:
+                                del self._mic_buffer[:excess]
+                except Exception as e:
+                    err = str(e)
+                    if "1000" in err or "ConnectionClosed" in type(e).__name__:
+                        log.info("Gemini session closed cleanly.")
+                    else:
+                        log.error(f"Send error: {e}")
+                    self.stream_active = False
+                    break
 
         except asyncio.CancelledError:
             pass

@@ -167,15 +167,19 @@ class _HardwareAudioPlayer:
     def __init__(self):
         import sounddevice as sd
         import numpy as np
+        import time
         self._sd = sd
         self._np = np
+        self._time      = time
         self._buffer    = bytearray()
         self._lock      = threading.Lock()
         self._speaking  = threading.Event()
+        self._last_play = 0.0
         self._stream    = None
 
     def start(self):
         self._speaking.clear()
+        self._last_play = 0.0
         with self._lock:
             self._buffer.clear()
         self._stream = self._sd.OutputStream(
@@ -194,17 +198,15 @@ class _HardwareAudioPlayer:
             if avail >= needed:
                 chunk = bytes(self._buffer[:needed])
                 del self._buffer[:needed]
+                self._last_play = self._time.time()
             elif avail > 0:
                 # Last chunk — buffer is about to drain
                 chunk = bytes(self._buffer) + b"\x00" * (needed - avail)
                 self._buffer.clear()
-                # CRITICAL: clear _speaking so mic input is no longer suppressed.
-                # Without this, all user speech after the first response becomes
-                # silence and WALL-E never hears the user again.
                 self._speaking.clear()
+                self._last_play = self._time.time()
             else:
                 chunk = b"\x00" * needed
-                # Buffer already empty — ensure _speaking is cleared
                 self._speaking.clear()
         outdata[:] = self._np.frombuffer(chunk, dtype=self._np.int16).reshape(-1, 1)
 
@@ -212,6 +214,11 @@ class _HardwareAudioPlayer:
         self._speaking.set()
         with self._lock:
             self._buffer.extend(data)
+
+    def is_speaking(self) -> bool:
+        # Pad the speaking state by 0.5 seconds to account for ALSA/PulseAudio latency
+        # and physical room reverberation, preventing the mic from picking up echo!
+        return self._speaking.is_set() or (self._time.time() - self._last_play < 0.5)
 
     def is_empty(self) -> bool:
         with self._lock:
@@ -512,16 +519,12 @@ class WalleSession:
                     if self.mode == "hardware" and not self._audio_paused and not self._processing_tool:
                         import numpy as np
                         arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
-                        
-                        # Remove DC Offset (hardware electrical hum)
-                        arr = arr - np.mean(arr)
-                        
                         rms = float(np.sqrt(np.mean(arr**2)))
                         
                         # Dynamic Noise Floor Tracking
-                        MIN_FLOOR = 3500     # raised to ignore hardware static
-                        MAX_FLOOR = 8000
-                        TRIGGER_RATIO = 1.5
+                        MIN_FLOOR = 300
+                        MAX_FLOOR = 3000
+                        TRIGGER_RATIO = 1.3
                         
                         noise_floor = min(
                             max(np.mean(self._noise_window) if self._noise_window else MIN_FLOOR, MIN_FLOOR),
@@ -529,7 +532,7 @@ class WalleSession:
                         )
                         
                         # Only trigger if voice is louder than noise floor OR generally loud enough
-                        if rms > (noise_floor * TRIGGER_RATIO) or rms > 5000:
+                        if rms > (noise_floor * TRIGGER_RATIO) or rms > 1200:
                             self._is_user_speaking = True
                             self._silence_timer = 0.0
                         elif self._is_user_speaking:

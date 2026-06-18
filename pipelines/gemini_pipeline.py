@@ -266,6 +266,10 @@ class WalleSession:
         self._processing_tool   = False
         self._had_output        = False
         self._last_trigger_time = 0.0
+        
+        # Local VAD state for hardware mode
+        self._is_user_speaking  = False
+        self._silence_timer     = 0.0
 
         # Queues
         self.audio_queue: asyncio.Queue[bytes] | None = (
@@ -495,6 +499,27 @@ class WalleSession:
 
                 audio_bytes = await self._get_audio_chunk()
                 if audio_bytes:
+                    # ── Local VAD logic (Fast cut-off) ───────────────────────
+                    if self.mode == "hardware" and not self._audio_paused and not self._processing_tool:
+                        import numpy as np
+                        arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
+                        rms = float(np.sqrt(np.mean(arr**2)))
+                        
+                        # Threshold > 1500 implies speech. Quiet room is usually < 500.
+                        if rms > 1500:
+                            self._is_user_speaking = True
+                            self._silence_timer = 0.0
+                        elif self._is_user_speaking:
+                            chunk_duration = len(audio_bytes) / (2 * settings.sample_rate_in)
+                            self._silence_timer += chunk_duration
+                            
+                            # If silent for more than config threshold (default 600ms)
+                            if self._silence_timer > (settings.silence_duration_ms / 1000.0):
+                                log.info("Local VAD detected silence — forcing turn_complete to reduce latency.")
+                                await self.gemini_queue.put({"turn_complete": True})
+                                self._is_user_speaking = False
+                                self._silence_timer = 0.0
+
                     try:
                         await session.send_realtime_input(
                             audio=types.Blob(

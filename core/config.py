@@ -71,10 +71,9 @@ class WalleConfig:
     # ── Gemini / AI ───────────────────────────────────────────────────────────
     gemini_models: list = field(
         default_factory=lambda: [
-            # All native-audio models support function_declarations + audio in Live mode.
-            # Tested: TOOLS OK for all three on this API key.
-            "models/gemini-2.5-flash-native-audio-preview-12-2025",
+            "models/gemini-2.0-flash-exp",
             "models/gemini-2.5-flash-native-audio-latest",
+            "models/gemini-2.5-flash-native-audio-preview-12-2025",
             "models/gemini-2.5-flash-native-audio-preview-09-2025",
         ]
     )

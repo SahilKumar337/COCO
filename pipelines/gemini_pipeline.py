@@ -473,12 +473,15 @@ class WalleSession:
                         # _processing_tool stays True until Gemini's next turn_complete.
                         self._pending_tool_response = False
                     elif "turn_complete" in cmd:
-                        # Server-side VAD is enabled by default in Gemini Live.
-                        # Simply pause audio briefly to let VAD detect the speech gap.
-                        # Do NOT send audio_stream_end=True while server-VAD is active
-                        # — it conflicts with automatic activity detection → 1008 errors.
+                        # Server-side VAD might stay open forever due to Pi background noise.
+                        # Explicitly send a blank message with end_of_turn=True to force response.
+                        try:
+                            await session.send(input=" ", end_of_turn=True)
+                        except Exception as e:
+                            log.debug(f"Failed to send end_of_turn: {e}")
+                            
                         self._audio_paused = True
-                        await asyncio.sleep(0.05)  # 50ms pause is enough for VAD to register
+                        await asyncio.sleep(0.1)  # Brief pause to reset
                         self._audio_paused = False
                     elif "system_event" in cmd:
                         try:

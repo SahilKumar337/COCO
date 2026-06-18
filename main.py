@@ -25,7 +25,7 @@ load_dotenv()
 from core.config import settings
 from core.logger import get_logger
 from core.registry import registry
-from core.tts import speak, say_boot_ready, play_wake_chime, say_connectivity_error, say_quota_error
+from core.tts import speak, say_connectivity_error, say_quota_error
 from pipelines.audio_pipeline import AudioPipeline
 from pipelines.wake_pipeline import WakePipeline
 from pipelines.identity_pipeline import IdentityPipeline
@@ -58,12 +58,7 @@ async def run():
         log.info("Migrating old JSON memory to database...")
         migrate_from_json()
 
-    # ── Early boot greeting ────────────────────────────────────────────────────
-    # Speak IMMEDIATELY on startup so user knows Pi is alive.
-    # This plays within ~10 seconds of boot, long before AI models finish loading.
-    speak("Initializing systems, please wait.", block=False)
-
-    # ── Boot pipelines ──────────────────────────────────────────────────────
+    # Boot pipelines ──────────────────────────────────────────────────────
     audio_pipeline    = registry.register(AudioPipeline())
     # identity_pipeline = registry.register(IdentityPipeline()) # Disabled to free up CPU
     nav_pipeline      = registry.register(NavigationPipeline(audio_pipeline.offline_queue))
@@ -100,8 +95,7 @@ async def run():
     log.info(f"Face recognition: {'ENABLED' if FACE_AVAILABLE else 'DISABLED (voice only)'}")
     log.info(f"Emotion eyes: {'ENABLED on ' + settings.eye_serial_port if emotion_engine else 'DISABLED'}")
 
-    # ── Ready greeting — all models loaded, now listening ─────────────────────
-    say_boot_ready()
+    # No boot greeting, waiting silently for wake word
 
     # Eyes: boot-open animation now that everything is ready
     if emotion_engine:
@@ -122,7 +116,7 @@ async def run():
 
             # ── Wake greeting ─────────────────────────────────────────────────
             # Use instant local TTS for the greeting so there is zero network delay
-            play_wake_chime()
+            speak("Hi, I am WALL-E.", block=True)
             
             # Flush any physical echo of the greeting that the microphone just recorded!
             # If we don't flush this, Gemini will hear the echo and start looping!

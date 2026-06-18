@@ -512,12 +512,16 @@ class WalleSession:
                     if self.mode == "hardware" and not self._audio_paused and not self._processing_tool:
                         import numpy as np
                         arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
+                        
+                        # Remove DC Offset (hardware electrical hum)
+                        arr = arr - np.mean(arr)
+                        
                         rms = float(np.sqrt(np.mean(arr**2)))
                         
                         # Dynamic Noise Floor Tracking
-                        MIN_FLOOR = 300
-                        MAX_FLOOR = 3000
-                        TRIGGER_RATIO = 1.3
+                        MIN_FLOOR = 3500     # raised to ignore hardware static
+                        MAX_FLOOR = 8000
+                        TRIGGER_RATIO = 1.5
                         
                         noise_floor = min(
                             max(np.mean(self._noise_window) if self._noise_window else MIN_FLOOR, MIN_FLOOR),
@@ -525,7 +529,7 @@ class WalleSession:
                         )
                         
                         # Only trigger if voice is louder than noise floor OR generally loud enough
-                        if rms > (noise_floor * TRIGGER_RATIO) or rms > 1200:
+                        if rms > (noise_floor * TRIGGER_RATIO) or rms > 5000:
                             self._is_user_speaking = True
                             self._silence_timer = 0.0
                         elif self._is_user_speaking:

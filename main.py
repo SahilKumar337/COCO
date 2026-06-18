@@ -25,7 +25,7 @@ load_dotenv()
 from core.config import settings
 from core.logger import get_logger
 from core.registry import registry
-from core.tts import speak, say_connectivity_error, say_quota_error
+from core.tts import speak, say_boot_ready, say_connectivity_error, say_quota_error
 from pipelines.audio_pipeline import AudioPipeline
 from pipelines.wake_pipeline import WakePipeline
 from pipelines.identity_pipeline import IdentityPipeline
@@ -95,7 +95,8 @@ async def run():
     log.info(f"Face recognition: {'ENABLED' if FACE_AVAILABLE else 'DISABLED (voice only)'}")
     log.info(f"Emotion eyes: {'ENABLED on ' + settings.eye_serial_port if emotion_engine else 'DISABLED'}")
 
-    # No boot greeting, waiting silently for wake word
+    # ── Ready greeting — all models loaded, now listening ─────────────────────
+    say_boot_ready()
 
     # Eyes: boot-open animation now that everything is ready
     if emotion_engine:

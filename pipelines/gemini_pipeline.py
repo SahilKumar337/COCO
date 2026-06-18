@@ -474,9 +474,15 @@ class WalleSession:
                         self._pending_tool_response = False
                     elif "turn_complete" in cmd:
                         # Server-side VAD might stay open forever due to Pi background noise.
-                        # Explicitly send a blank message with end_of_turn=True to force response.
+                        # Explicitly send a blank message to force response.
                         try:
-                            await session.send(input=" ", end_of_turn=True)
+                            await session.send_client_content(
+                                turns=types.Content(
+                                    role="user",
+                                    parts=[types.Part(text=" ")]
+                                ),
+                                turn_complete=True,
+                            )
                         except Exception as e:
                             log.debug(f"Failed to send end_of_turn: {e}")
                             
@@ -485,17 +491,15 @@ class WalleSession:
                         self._audio_paused = False
                     elif "system_event" in cmd:
                         try:
-                            await session.send(input=cmd["system_event"], end_of_turn=True)
-                        except AttributeError:
                             await session.send_client_content(
-                                turns=[types.Content(
+                                turns=types.Content(
                                     role="user",
                                     parts=[types.Part(text=cmd["system_event"])]
-                                )],
+                                ),
                                 turn_complete=True,
                             )
                         except Exception as e:
-                            log.debug(f"System event ignored: {e}")
+                            log.debug(f"System event failed: {e}")
                 except asyncio.QueueEmpty:
                     pass
 

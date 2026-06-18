@@ -92,7 +92,7 @@ class WalleConfig:
     session_limit_sec: int = 7200   # 2-hour sessions
     reconnect_delay: float = 1.5
     heartbeat_sec: int = 20
-    silence_duration_ms: int = 600  # VAD silence threshold
+    silence_duration_ms: int = 2000  # VAD silence threshold (2 seconds)
 
     # ── Audio ─────────────────────────────────────────────────────────────────
     # sample_rate_in: target rate delivered to Whisper and Gemini (must be 16000)

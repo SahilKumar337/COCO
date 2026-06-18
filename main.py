@@ -61,7 +61,7 @@ async def run():
     # ── Early boot greeting ────────────────────────────────────────────────────
     # Speak IMMEDIATELY on startup so user knows Pi is alive.
     # This plays within ~10 seconds of boot, long before AI models finish loading.
-    speak("Hi! I am WALL-E. Loading AI systems, please wait a moment.", block=False)
+    speak("Initializing systems, please wait.", block=False)
 
     # ── Boot pipelines ──────────────────────────────────────────────────────
     audio_pipeline    = registry.register(AudioPipeline())

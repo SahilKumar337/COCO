@@ -52,4 +52,4 @@ StandardError=journal
 SyslogIdentifier=walle-ai
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

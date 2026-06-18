@@ -109,12 +109,8 @@ pip install torch torchvision torchaudio \
     --index-url https://download.pytorch.org/whl/cpu \
     || warn "PyTorch install from PyPI may be slow on Pi — trying anyway."
 
-# dlib (needed by face_recognition)
-# Try binary first (fastest), fall back to source build
-info "Installing dlib..."
-pip install dlib-bin 2>/dev/null \
-    || (info "dlib-bin not available — building from source (takes ~10 min)..." \
-        && pip install dlib)
+# dlib and face_recognition are skipped to prevent thermal/power crashes during installation
+# (Face recognition is disabled in main.py to save CPU anyway)
 
 # All other WALL-E dependencies using the Pi-specific requirements file
 info "Installing WALL-E AI Python packages..."

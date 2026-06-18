@@ -694,7 +694,11 @@ class WalleSession:
 
         except Exception as e:
             if self.active:
-                log.error(f"Recv pipeline error: {e}")
+                err = str(e).lower()
+                if "1008" in err or "1000" in err or "connection" in err:
+                    log.info(f"Gemini session idle timeout (normal closure): {e}. Reconnecting...")
+                else:
+                    log.error(f"Recv pipeline error: {e}")
         finally:
             self.stream_active = False
             if self.is_speaking:

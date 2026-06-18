@@ -510,31 +510,32 @@ class WalleSession:
                         # Dynamic Noise Floor Tracking
                         MIN_FLOOR = 300
                         MAX_FLOOR = 3000
-                        TRIGGER_RATIO = 1.4
+                        TRIGGER_RATIO = 1.3
                         
                         noise_floor = min(
                             max(np.mean(self._noise_window) if self._noise_window else MIN_FLOOR, MIN_FLOOR),
                             MAX_FLOOR
                         )
-                        self._noise_window.append(rms)
                         
-                        if rms > (noise_floor * TRIGGER_RATIO):
+                        # Only trigger if voice is louder than noise floor OR generally loud enough
+                        if rms > (noise_floor * TRIGGER_RATIO) or rms > 1200:
                             self._is_user_speaking = True
                             self._silence_timer = 0.0
                         elif self._is_user_speaking:
                             chunk_duration = len(audio_bytes) / (2 * settings.sample_rate_in)
                             self._silence_timer += chunk_duration
                             
-                            # If silent for more than config threshold (default 600ms)
+                            # If silent for more than config threshold (default 2000ms)
                             if self._silence_timer > (settings.silence_duration_ms / 1000.0):
-                                log.info(f"Local VAD detected silence (RMS {rms:.0f} near floor {noise_floor:.0f}) — forcing turn_complete to reduce latency.")
+                                log.info(f"Local VAD detected silence (RMS {rms:.0f} near floor {noise_floor:.0f}) — forcing turn_complete.")
                                 await self.gemini_queue.put({"turn_complete": True})
                                 self._is_user_speaking = False
                                 self._silence_timer = 0.0
 
-                        # Mute the mic feed to Gemini when not speaking.
-                        # This forces Gemini's Server-Side VAD to trigger instantly.
+                        # Mute the mic feed to Gemini when not speaking to force instant Server VAD.
+                        # Also, ONLY update the background noise floor when we are NOT speaking!
                         if not self._is_user_speaking:
+                            self._noise_window.append(rms)
                             audio_bytes = b"\x00" * len(audio_bytes)
 
                     try:

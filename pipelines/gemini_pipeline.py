@@ -147,10 +147,6 @@ You have access to the get_user_location tool. USE IT when the user asks:
 - "What's the weather here?" (use location first, then web_search for weather)
 - For any query where knowing their location helps give a better answer
 
-# HANDLING UNCLEAR AUDIO
-If audio is empty or unintelligible, politely ask the user to repeat.
-Do not stay silent.
-
 # MEMORY & CONTEXT
 Maintain context from conversation history above.
 Remember what {user_name} tells you and refer back naturally.
@@ -517,6 +513,12 @@ class WalleSession:
                 audio_bytes = await self._get_audio_chunk()
                 if not audio_bytes:
                     continue
+
+                # If AI is speaking, zero out the microphone input to prevent echo and self-interruption
+                if self.mode == "hardware" and self._hw_player and self._hw_player.is_speaking():
+                    audio_bytes = b"\x00" * len(audio_bytes)
+                    self._is_user_speaking = False
+                    self._silence_timer = 0.0
 
                 # ── Local VAD logic (Fast cut-off) ───────────────────────
                 if self.mode == "hardware" and not self._audio_paused and not self._processing_tool:

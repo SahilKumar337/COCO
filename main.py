@@ -123,14 +123,16 @@ async def run():
             )
 
             try:
+                # We reduce timeout to 0.1s. The Pi CPU cannot run SpeechBrain in 2s anyway.
+                # This ensures WALL-E says "Hi" instantly, rather than pausing for 2 seconds.
                 speaker_name = await asyncio.wait_for(
-                    asyncio.shield(identity_task), timeout=2.0
+                    asyncio.shield(identity_task), timeout=0.1
                 )
             except asyncio.TimeoutError:
                 # Identity still running — use Unknown for now and let it
                 # finish in the background (result is discarded this cycle).
                 speaker_name = "Unknown"
-                log.info("Identity check timed out (>2s on Pi CPU) — starting as Unknown")
+                log.info("Identity check skipped to ensure instant voice reply.")
 
             log.info(f"Speaker identified: {speaker_name}")
 

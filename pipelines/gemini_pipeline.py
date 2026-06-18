@@ -527,15 +527,17 @@ class WalleSession:
                     # Dynamic Noise Floor Tracking
                     MIN_FLOOR = 300
                     MAX_FLOOR = 3000
-                    TRIGGER_RATIO = 1.3
+                    TRIGGER_RATIO = 1.25
                     
                     noise_floor = min(
                         max(np.mean(self._noise_window) if self._noise_window else MIN_FLOOR, MIN_FLOOR),
                         MAX_FLOOR
                     )
                     
-                    # Only trigger if voice is louder than noise floor OR generally loud enough
-                    if rms > (noise_floor * TRIGGER_RATIO) or rms > 1200:
+                    # Detect if user is actively speaking (lower threshold to 700 for soft speech)
+                    is_speech = rms > (noise_floor * TRIGGER_RATIO) or rms > 700
+                    
+                    if is_speech:
                         self._is_user_speaking = True
                         self._silence_timer = 0.0
                     elif self._is_user_speaking:
@@ -548,11 +550,12 @@ class WalleSession:
                             await self.gemini_queue.put({"turn_complete": True})
                             self._is_user_speaking = False
                             self._silence_timer = 0.0
-                        # Mute the mic feed to Gemini when not speaking to force instant Server VAD.
-                        # Also, ONLY update the background noise floor when we are NOT speaking!
-                        if not self._is_user_speaking:
-                            self._noise_window.append(rms)
-                            audio_bytes = b"\x00" * len(audio_bytes)
+                            
+                    # Mute the mic feed to Gemini when not in a speaking turn
+                    # This prevents background static/hiss from streaming and confusing Gemini
+                    if not self._is_user_speaking:
+                        self._noise_window.append(rms)
+                        audio_bytes = b"\x00" * len(audio_bytes)
 
                     try:
                         await session.send_realtime_input(

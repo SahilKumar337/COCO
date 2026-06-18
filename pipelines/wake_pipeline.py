@@ -113,13 +113,20 @@ class WakePipeline(AbstractPipeline):
         chunk_bytes    = int(bytes_per_sec * (settings.wake_chunk_ms / 1000.0))
         buffer         = bytearray()
 
+        # ── Dynamic noise floor tracking ──────────────────────────────────────
         # We keep a rolling window of recent RMS values to estimate the
         # ambient noise level. Whisper is only invoked when the current chunk
         # RMS is at least TRIGGER_RATIO × noise_floor.
+        #
+        # Why: If a YouTube video plays at RMS=5000 continuously, the noise
+        # floor adapts to ~5000. The user's voice close to the mic spikes to
+        # ~15000+, which is >> 1.4× above floor and triggers Whisper.
+        # The background video audio at constant ~5000 never triggers.
         NOISE_WINDOW   = 20       # number of recent chunks to track (≈30 s)
-        TRIGGER_RATIO  = 1.5      # voice must be 1.5× louder than background (raised for static resistance)
-        MIN_FLOOR      = 3500     # minimum noise floor (raised significantly to ignore hardware static)
-        MAX_FLOOR      = 8000     # cap — prevents threshold from being unreachable
+        TRIGGER_RATIO  = 1.4      # voice must be 1.4× louder than background
+        MIN_FLOOR      = 300      # minimum noise floor (quiet room baseline)
+        MAX_FLOOR      = 3000     # cap — prevents threshold from being unreachable
+                                  # in loud rooms (e.g. fan, AC, background TV)
         recent_rms     = collections.deque(maxlen=NOISE_WINDOW)
         chunks_skipped = 0
 
@@ -142,10 +149,6 @@ class WakePipeline(AbstractPipeline):
                     del buffer[:int(bytes_per_sec * 0.5)]
 
                     audio_arr = np.frombuffer(process_buf, dtype="int16").astype(np.float32)
-                    
-                    # Remove DC Offset (hardware electrical hum)
-                    audio_arr = audio_arr - np.mean(audio_arr)
-                    
                     rms = float(np.sqrt(np.mean(audio_arr ** 2)))
 
                     # Compute current noise floor from recent history, capped
@@ -184,9 +187,12 @@ class WakePipeline(AbstractPipeline):
                         beam_size=1,
                         language="en",
                         vad_filter=True,
+                        no_speech_threshold=0.4,          # Aggressively filter out static/silence hallucinations
+                        condition_on_previous_text=False, # Stop YouTube hallucination loops
+                        initial_prompt="wall-e",          # Bias the AI to expect the wake word, not random chatter
                         vad_parameters={
-                            "threshold": 0.2,
-                            "min_speech_duration_ms": 150,
+                            "threshold": 0.4,             # Stricter VAD (ignore loud static hiss)
+                            "min_speech_duration_ms": 200,
                             "min_silence_duration_ms": 200,
                         },
                     )

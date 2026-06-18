@@ -116,6 +116,7 @@ async def run():
             # ── Identify speaker (Disabled to free CPU for Gemini) ────────────
             log.info("Analyzing identity... (Disabled for max speed)")
             speaker_name = "Unknown"
+            await asyncio.sleep(0.1)  # Yield event loop to ensure audio buffers are ready
 
             log.info(f"Speaker identified: {speaker_name}")
 

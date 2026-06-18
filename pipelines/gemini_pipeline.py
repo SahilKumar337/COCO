@@ -12,6 +12,7 @@ Created by K.Astra and its members.
 from __future__ import annotations
 
 import asyncio
+import collections
 import datetime
 import json
 import threading
@@ -270,6 +271,7 @@ class WalleSession:
         # Local VAD state for hardware mode
         self._is_user_speaking  = False
         self._silence_timer     = 0.0
+        self._noise_window      = collections.deque(maxlen=20)
 
         # Queues
         self.audio_queue: asyncio.Queue[bytes] | None = (
@@ -505,8 +507,18 @@ class WalleSession:
                         arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
                         rms = float(np.sqrt(np.mean(arr**2)))
                         
-                        # Threshold > 1500 implies speech. Quiet room is usually < 500.
-                        if rms > 1500:
+                        # Dynamic Noise Floor Tracking
+                        MIN_FLOOR = 300
+                        MAX_FLOOR = 3000
+                        TRIGGER_RATIO = 1.4
+                        
+                        noise_floor = min(
+                            max(np.mean(self._noise_window) if self._noise_window else MIN_FLOOR, MIN_FLOOR),
+                            MAX_FLOOR
+                        )
+                        self._noise_window.append(rms)
+                        
+                        if rms > (noise_floor * TRIGGER_RATIO):
                             self._is_user_speaking = True
                             self._silence_timer = 0.0
                         elif self._is_user_speaking:
@@ -515,7 +527,7 @@ class WalleSession:
                             
                             # If silent for more than config threshold (default 600ms)
                             if self._silence_timer > (settings.silence_duration_ms / 1000.0):
-                                log.info("Local VAD detected silence — forcing turn_complete to reduce latency.")
+                                log.info(f"Local VAD detected silence (RMS {rms:.0f} near floor {noise_floor:.0f}) — forcing turn_complete to reduce latency.")
                                 await self.gemini_queue.put({"turn_complete": True})
                                 self._is_user_speaking = False
                                 self._silence_timer = 0.0

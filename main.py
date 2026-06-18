@@ -84,6 +84,7 @@ async def run():
         log.info("EmotionEngine disabled (WALLE_EYES_ENABLED=0).")
 
     # ── Start everything (loads Whisper + SpeechBrain + Vosk — takes 60-90s on Pi) ─
+    speak("AI initializing", block=False)
     await registry.start_all()
 
     if FACE_AVAILABLE:
@@ -117,7 +118,6 @@ async def run():
 
             # ── Wake greeting ─────────────────────────────────────────────────
             # Use instant local TTS for the greeting so there is zero network delay
-            speak("Hi, I am WALL-E.", block=True)
             
             # Flush any physical echo of the greeting that the microphone just recorded!
             # If we don't flush this, Gemini will hear the echo and start looping!

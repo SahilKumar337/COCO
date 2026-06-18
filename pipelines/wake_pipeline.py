@@ -39,6 +39,7 @@ _WAKE_VARIANTS = {
     "walli",    # double-l variant
     "woly",     # mishear
     "woli",     # mishear
+    "pied",     # distortion from cheap USB mics
 }
 
 
@@ -126,7 +127,7 @@ class WakePipeline(AbstractPipeline):
         # The background video audio at constant ~5000 never triggers.
         NOISE_WINDOW   = 20       # number of recent chunks to track (≈30 s)
         TRIGGER_RATIO  = 1.4      # voice must be 1.4× louder than background
-        MIN_FLOOR      = 1500     # minimum noise floor (aggressively blocks Pi USB mic hiss)
+        MIN_FLOOR      = 500      # minimum noise floor (blocks static, allows low-volume USB mics)
         MAX_FLOOR      = 5000     # cap — prevents threshold from being unreachable
                                   # in loud rooms (e.g. fan, AC, background TV)
         recent_rms     = collections.deque(maxlen=NOISE_WINDOW)

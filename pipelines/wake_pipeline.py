@@ -39,6 +39,13 @@ _WAKE_VARIANTS = {
     "walli",    # double-l variant
     "woly",     # mishear
     "woli",     # mishear
+    "ollie",    # common Whisper mishear/transcription of "wall-e"
+    "olly",     # common Whisper mishear
+    "oli",      # phonetic/shortened mishear
+    "olley",    # phonetically similar
+    "ali",      # common South Asian/phonetic mishear
+    "alley",    # phonetically similar
+    "ally",     # phonetically similar
     "pied",     # distortion from cheap USB mics
 }
 

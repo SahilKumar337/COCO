@@ -131,7 +131,10 @@ class WalleConfig:
 
     # ── Wake Word ─────────────────────────────────────────────────────────────
     wake_variants: list = field(
-        default_factory=lambda: ["wall-e", "walle", "wally", "wali", "wole"]
+        default_factory=lambda: [
+            "wall-e", "walle", "wally", "wali", "wole",
+            "ollie", "olly", "oli", "ali"
+        ]
     )
     wake_chunk_ms: int = 1500
     # Pi 5 uses tiny model — same as default (good quality, fast on ARM64 w/ 8GB)

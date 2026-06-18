@@ -28,7 +28,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 
 # Use the virtual environment's Python
-ExecStart=__VENV_DIR__/bin/python server.py
+ExecStart=__VENV_DIR__/bin/python main.py
 
 # Restart automatically if it crashes (e.g., network blip or Gemini quota)
 Restart=on-failure

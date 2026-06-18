@@ -65,7 +65,7 @@ async def run():
 
     # ── Boot pipelines ──────────────────────────────────────────────────────
     audio_pipeline    = registry.register(AudioPipeline())
-    identity_pipeline = registry.register(IdentityPipeline())
+    # identity_pipeline = registry.register(IdentityPipeline()) # Disabled to free up CPU
     nav_pipeline      = registry.register(NavigationPipeline(audio_pipeline.offline_queue))
     wake_pipeline     = registry.register(WakePipeline(audio_pipeline.online_queue))
 
@@ -93,7 +93,7 @@ async def run():
 
     if FACE_AVAILABLE:
         face_engine.start()
-        identity_pipeline.attach_face_engine(face_engine)
+        # identity_pipeline.attach_face_engine(face_engine) # Disabled
 
     log.info(f"Wake variants: {settings.wake_variants}")
     log.info(f"Anti-impersonation: ENABLED — owner requires strict voiceprint")
@@ -113,26 +113,9 @@ async def run():
             log.info(f"Waiting for wake word {settings.wake_variants}...")
             audio_file_path = await wake_pipeline.wait_for_wake()
 
-            # ── Identify speaker (async, with timeout) ────────────────────────
-            # Run identity check in the background so it overlaps with
-            # session/prompt preparation. 2-second timeout prevents SpeechBrain
-            # CPU inference from blocking WALL-E's first response.
-            log.info("Analyzing identity...")
-            identity_task = asyncio.create_task(
-                identity_pipeline.identify(audio_file_path)
-            )
-
-            try:
-                # We reduce timeout to 0.1s. The Pi CPU cannot run SpeechBrain in 2s anyway.
-                # This ensures WALL-E says "Hi" instantly, rather than pausing for 2 seconds.
-                speaker_name = await asyncio.wait_for(
-                    asyncio.shield(identity_task), timeout=0.1
-                )
-            except asyncio.TimeoutError:
-                # Identity still running — use Unknown for now and let it
-                # finish in the background (result is discarded this cycle).
-                speaker_name = "Unknown"
-                log.info("Identity check skipped to ensure instant voice reply.")
+            # ── Identify speaker (Disabled to free CPU for Gemini) ────────────
+            log.info("Analyzing identity... (Disabled for max speed)")
+            speaker_name = "Unknown"
 
             log.info(f"Speaker identified: {speaker_name}")
 
@@ -153,9 +136,9 @@ async def run():
                 mode="hardware",
                 current_user=speaker_name,
                 face_engine=face_engine,
-                recognizer=identity_pipeline._recognizer,
+                recognizer=None,
                 audio_queue=audio_pipeline.online_queue,
-                identity_pipeline=identity_pipeline,
+                identity_pipeline=None,
                 emotion_engine=emotion_engine,
             )
 

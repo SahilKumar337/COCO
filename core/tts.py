@@ -116,7 +116,7 @@ def speak(text: str, block: bool = True) -> None:
 
 def say_boot_ready() -> None:
     """Spoken when all AI models are loaded and WALL-E is listening."""
-    speak("Hi! I am WALL-E. Say my name to wake me up.", block=False)
+    speak("Hi! I am WALL-E.", block=False)
 
 
 def say_session_start(speaker: str = "") -> None:

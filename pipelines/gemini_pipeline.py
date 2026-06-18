@@ -594,11 +594,8 @@ class WalleSession:
                 return None
             try:
                 data = self._raw_mic_queue.get_nowait()
-                # Universal software echo suppression (Fallback)
-                # If the AI is speaking, send silence to prevent echo loops.
-                if self._hw_player and self._hw_player._speaking.is_set():
-                    silence = b"\x00" * len(data)
-                    return silence
+                # WebRTC AEC will handle echo at the OS level
+                # This enables true full-duplex interruptions!
                 return data
             except _queue.Empty:
                 await asyncio.sleep(0.01)

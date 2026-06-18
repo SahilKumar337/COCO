@@ -121,8 +121,17 @@ async def run():
             log.info(f"Speaker identified: {speaker_name}")
 
             # ── Wake greeting ─────────────────────────────────────────────────
-            # We now use Gemini's native voice for the greeting (handled in gemini_pipeline.py).
-            # This guarantees the mic is actively listening exactly when the greeting plays!
+            # Use instant local TTS for the greeting so there is zero network delay
+            say_session_start(speaker_name)
+            
+            # Flush any physical echo of the greeting that the microphone just recorded!
+            # If we don't flush this, Gemini will hear the echo and start looping!
+            import queue
+            while not audio_pipeline.online_queue.empty():
+                try:
+                    audio_pipeline.online_queue.get_nowait()
+                except queue.Empty:
+                    break
 
             # Clean up temp audio file
             try:

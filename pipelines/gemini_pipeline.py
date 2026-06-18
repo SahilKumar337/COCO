@@ -514,38 +514,39 @@ class WalleSession:
                     continue
 
                 audio_bytes = await self._get_audio_chunk()
-                if audio_bytes:
-                    # ── Local VAD logic (Fast cut-off) ───────────────────────
-                    if self.mode == "hardware" and not self._audio_paused and not self._processing_tool:
-                        import numpy as np
-                        arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
-                        rms = float(np.sqrt(np.mean(arr**2)))
-                        
-                        # Dynamic Noise Floor Tracking
-                        MIN_FLOOR = 300
-                        MAX_FLOOR = 3000
-                        TRIGGER_RATIO = 1.3
-                        
-                        noise_floor = min(
-                            max(np.mean(self._noise_window) if self._noise_window else MIN_FLOOR, MIN_FLOOR),
-                            MAX_FLOOR
-                        )
-                        
-                        # Only trigger if voice is louder than noise floor OR generally loud enough
-                        if rms > (noise_floor * TRIGGER_RATIO) or rms > 1200:
-                            self._is_user_speaking = True
-                            self._silence_timer = 0.0
-                        elif self._is_user_speaking:
-                            chunk_duration = len(audio_bytes) / (2 * settings.sample_rate_in)
-                            self._silence_timer += chunk_duration
-                            
-                            # If silent for more than config threshold (default 2000ms)
-                            if self._silence_timer > (settings.silence_duration_ms / 1000.0):
-                                log.info(f"Local VAD detected silence (RMS {rms:.0f} near floor {noise_floor:.0f}) — forcing turn_complete.")
-                                await self.gemini_queue.put({"turn_complete": True})
-                                self._is_user_speaking = False
-                                self._silence_timer = 0.0
+                if not audio_bytes:
+                    continue
 
+                # ── Local VAD logic (Fast cut-off) ───────────────────────
+                if self.mode == "hardware" and not self._audio_paused and not self._processing_tool:
+                    import numpy as np
+                    arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
+                    rms = float(np.sqrt(np.mean(arr**2)))
+                    
+                    # Dynamic Noise Floor Tracking
+                    MIN_FLOOR = 300
+                    MAX_FLOOR = 3000
+                    TRIGGER_RATIO = 1.3
+                    
+                    noise_floor = min(
+                        max(np.mean(self._noise_window) if self._noise_window else MIN_FLOOR, MIN_FLOOR),
+                        MAX_FLOOR
+                    )
+                    
+                    # Only trigger if voice is louder than noise floor OR generally loud enough
+                    if rms > (noise_floor * TRIGGER_RATIO) or rms > 1200:
+                        self._is_user_speaking = True
+                        self._silence_timer = 0.0
+                    elif self._is_user_speaking:
+                        chunk_duration = len(audio_bytes) / (2 * settings.sample_rate_in)
+                        self._silence_timer += chunk_duration
+                        
+                        # If silent for more than config threshold (default 2000ms)
+                        if self._silence_timer > (settings.silence_duration_ms / 1000.0):
+                            log.info(f"Local VAD detected silence (RMS {rms:.0f} near floor {noise_floor:.0f}) — forcing turn_complete.")
+                            await self.gemini_queue.put({"turn_complete": True})
+                            self._is_user_speaking = False
+                            self._silence_timer = 0.0
                         # Mute the mic feed to Gemini when not speaking to force instant Server VAD.
                         # Also, ONLY update the background noise floor when we are NOT speaking!
                         if not self._is_user_speaking:

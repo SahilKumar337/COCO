@@ -532,6 +532,11 @@ class WalleSession:
                                 self._is_user_speaking = False
                                 self._silence_timer = 0.0
 
+                        # Mute the mic feed to Gemini when not speaking.
+                        # This forces Gemini's Server-Side VAD to trigger instantly.
+                        if not self._is_user_speaking:
+                            audio_bytes = b"\x00" * len(audio_bytes)
+
                     try:
                         await session.send_realtime_input(
                             audio=types.Blob(

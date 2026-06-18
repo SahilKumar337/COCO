@@ -178,6 +178,11 @@ class WakePipeline(AbstractPipeline):
                     log.info(f"[Noise gate] PASS — running Whisper (RMS {rms:.0f} > {noise_floor * TRIGGER_RATIO:.0f})")
 
                     # ── Run Whisper ───────────────────────────────────────────
+                    if not self._ready or self._model is None:
+                        log.warning("AI Model is still loading into memory... please wait.")
+                        time.sleep(1)
+                        continue
+                        
                     audio_int16 = audio_arr.astype(np.int16)
                     tmp = tempfile.mktemp(suffix=".wav")
                     wav.write(tmp, sr, audio_int16)

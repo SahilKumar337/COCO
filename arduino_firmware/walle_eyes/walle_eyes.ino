@@ -18,17 +18,9 @@
  * NO soldering. NO address change. Both show the same image.
  * ──────────────────────────────────────────────────────────────
  *
- * Connection to Raspberry Pi (TWO options — pick ONE):
- *
- * OPTION A — USB cable (simple):
+ * Connection to Raspberry Pi:
  *   Just plug ESP32 USB into Pi USB port. Done.
- *   Pi port: /dev/ttyUSB0
- *
- * OPTION B — GPIO UART (your friend's method):
- *   Pi GPIO14 (TX) ───→ ESP32 GPIO16 (RX)
- *   Pi GPIO15 (RX) ←─── ESP32 GPIO17 (TX)
- *   Pi GND         ───── ESP32 GND
- *   Pi port: /dev/ttyAMA0
+ *   Pi port: /dev/ttyUSB0 (or /dev/ttyUSB1, etc.)
  *
  * Serial commands from Raspberry Pi (115200 baud):
  *   N = Neutral    H = Happy    S = Sad      A = Angry
@@ -49,12 +41,6 @@
 #define OLED_ADDR     0x3C
 #define SDA_PIN       21
 #define SCL_PIN       22
-
-// ── Pi Communication (UART via GPIO 16/17) ────────────────────────────────────
-// Serial  = USB (used for Arduino IDE debug output only)
-// Serial2 = GPIO pins (receives commands from Raspberry Pi)
-#define PI_RX_PIN  16   // ESP32 receives FROM Pi GPIO14
-#define PI_TX_PIN  17   // ESP32 sends   TO   Pi GPIO15
 
 // ONE display object — both screens wired together receive same data
 Adafruit_SSD1306 eyes(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -331,33 +317,31 @@ void updateAnimations() {
 }
 
 // ── Serial command handler ────────────────────────────────────────────────────
-// Reads from BOTH sources:
-//   Serial  = USB cable  (for testing via Arduino IDE Serial Monitor)
-//   Serial2 = GPIO 16/17 (Pi GPIO14 TX → ESP GPIO16 RX)
+// Reads from USB Serial connection (Raspberry Pi or PC)
 void handleCmd(char c) {
   switch (c) {
-    case 'N': changeEmotion(EMO_NEUTRAL);   Serial.println("ACK:NEUTRAL");   Serial2.println("ACK:NEUTRAL");   break;
-    case 'H': changeEmotion(EMO_HAPPY);     Serial.println("ACK:HAPPY");     Serial2.println("ACK:HAPPY");     break;
-    case 'S': changeEmotion(EMO_SAD);       Serial.println("ACK:SAD");       Serial2.println("ACK:SAD");       break;
-    case 'A': changeEmotion(EMO_ANGRY);     Serial.println("ACK:ANGRY");     Serial2.println("ACK:ANGRY");     break;
-    case 'U': changeEmotion(EMO_SURPRISED); Serial.println("ACK:SURPRISED"); Serial2.println("ACK:SURPRISED"); break;
-    case 'T': changeEmotion(EMO_THINKING);  Serial.println("ACK:THINKING");  Serial2.println("ACK:THINKING");  break;
-    case 'L': changeEmotion(EMO_LISTENING); Serial.println("ACK:LISTENING"); Serial2.println("ACK:LISTENING"); break;
-    case 'K': changeEmotion(EMO_SPEAKING);  Serial.println("ACK:SPEAKING");  Serial2.println("ACK:SPEAKING");  break;
+    case 'N': changeEmotion(EMO_NEUTRAL);   Serial.println("ACK:NEUTRAL");   break;
+    case 'H': changeEmotion(EMO_HAPPY);     Serial.println("ACK:HAPPY");     break;
+    case 'S': changeEmotion(EMO_SAD);       Serial.println("ACK:SAD");       break;
+    case 'A': changeEmotion(EMO_ANGRY);     Serial.println("ACK:ANGRY");     break;
+    case 'U': changeEmotion(EMO_SURPRISED); Serial.println("ACK:SURPRISED"); break;
+    case 'T': changeEmotion(EMO_THINKING);  Serial.println("ACK:THINKING");  break;
+    case 'L': changeEmotion(EMO_LISTENING); Serial.println("ACK:LISTENING"); break;
+    case 'K': changeEmotion(EMO_SPEAKING);  Serial.println("ACK:SPEAKING");  break;
     case 'B':
       if (!isBlinking) { isBlinking = true; blinkMs = millis(); blinkProg = 0; }
-      Serial.println("ACK:BLINK"); Serial2.println("ACK:BLINK");
+      Serial.println("ACK:BLINK");
       break;
     case 'O':
       bootActive = true; sleepActive = false;
       openProg = 0.0f; animStartMs = millis();
       changeEmotion(EMO_NEUTRAL);
-      Serial.println("ACK:BOOT_OPEN"); Serial2.println("ACK:BOOT_OPEN");
+      Serial.println("ACK:BOOT_OPEN");
       break;
     case 'X':
       sleepActive = true; bootActive = false;
       animStartMs = millis();
-      Serial.println("ACK:SLEEP_CLOSE"); Serial2.println("ACK:SLEEP_CLOSE");
+      Serial.println("ACK:SLEEP_CLOSE");
       break;
     case '\n': case '\r': break;
     default:
@@ -366,26 +350,20 @@ void handleCmd(char c) {
 }
 
 void processSerial() {
-  // Pi commands via GPIO UART (Serial2) — highest priority
-  while (Serial2.available() > 0) handleCmd(Serial2.read());
-  // USB commands (Arduino IDE testing)
-  while (Serial.available()  > 0) handleCmd(Serial.read());
+  while (Serial.available() > 0) handleCmd(Serial.read());
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 void setup() {
-  // USB Serial — for Arduino IDE debug output only
+  // USB Serial — for commands and debugging
   Serial.begin(115200);
   delay(100);
-
-  // Serial2 — receives commands from Raspberry Pi via GPIO 16/17
-  Serial2.begin(115200, SERIAL_8N1, PI_RX_PIN, PI_TX_PIN);
 
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(400000);
 
   Serial.println("WALL-E Eyes: Starting...");
-  Serial.println("Pi commands via Serial2 GPIO16(RX)/GPIO17(TX)");
+  Serial.println("Waiting for commands on USB Serial...");
 
   if (!eyes.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
     Serial.println("ERR: Display not found on GPIO 21/22!");
@@ -409,7 +387,7 @@ void setup() {
   nextBlink   = random(BLINK_MIN_MS, BLINK_MAX_MS);
   randomSeed(analogRead(0));
 
-  Serial.println("WALL-E Eyes: Ready! Waiting for Pi commands on GPIO16...");
+  Serial.println("WALL-E Eyes: Ready! Waiting for Pi commands on USB...");
 }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────

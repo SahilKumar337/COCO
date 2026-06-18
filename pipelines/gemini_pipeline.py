@@ -318,12 +318,6 @@ class WalleSession:
         return types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             system_instruction=types.Content(parts=[types.Part(text=prompt)]),
-            # Use Gemini's built-in server-side VAD
-            realtime_input_config=types.RealtimeInputConfig(
-                automatic_activity_detection=types.AutomaticActivityDetection(
-                    silence_duration_ms=settings.silence_duration_ms
-                )
-            ),
             tools=[
                 types.Tool(function_declarations=tool_registry.declarations),
             ],

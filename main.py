@@ -35,6 +35,14 @@ from face_engine import FaceEngine, FACE_AVAILABLE
 from storage.db import init_db
 from storage.people import migrate_from_json
 
+# Optional emotion eye engine (Pi only; silently skipped on other platforms)
+try:
+    from emotion_engine import EmotionEngine
+    _EMOTION_AVAILABLE = True
+except ImportError:
+    EmotionEngine = None  # type: ignore
+    _EMOTION_AVAILABLE = False
+
 log = get_logger("main")
 
 
@@ -55,7 +63,7 @@ async def run():
     # This plays within ~10 seconds of boot, long before AI models finish loading.
     speak("Hi! I am WALL-E. Loading AI systems, please wait a moment.", block=False)
 
-    # ── Boot pipelines ─────────────────────────────────────────────────────────
+    # ── Boot pipelines ──────────────────────────────────────────────────────
     audio_pipeline    = registry.register(AudioPipeline())
     identity_pipeline = registry.register(IdentityPipeline())
     nav_pipeline      = registry.register(NavigationPipeline(audio_pipeline.offline_queue))
@@ -65,6 +73,20 @@ async def run():
 
     # ── Face engine (not a pipeline — runs its own thread) ────────────────────
     face_engine = FaceEngine()
+
+    # ── Emotion eye engine (hardware only, fails gracefully if ESP32 not connected) ─
+    emotion_engine = None
+    if _EMOTION_AVAILABLE and settings.eye_enabled:
+        log.info(f"Booting EmotionEngine on {settings.eye_serial_port}...")
+        emotion_engine = EmotionEngine(
+            port=settings.eye_serial_port,
+            baudrate=settings.eye_serial_baud,
+            enabled=True,
+        )
+    elif not _EMOTION_AVAILABLE:
+        log.info("EmotionEngine not available (emotion_engine.py not found or pyserial missing).")
+    else:
+        log.info("EmotionEngine disabled (WALLE_EYES_ENABLED=0).")
 
     # ── Start everything (loads Whisper + SpeechBrain + Vosk — takes 60-90s on Pi) ─
     await registry.start_all()
@@ -76,9 +98,14 @@ async def run():
     log.info(f"Wake variants: {settings.wake_variants}")
     log.info(f"Anti-impersonation: ENABLED — owner requires strict voiceprint")
     log.info(f"Face recognition: {'ENABLED' if FACE_AVAILABLE else 'DISABLED (voice only)'}")
+    log.info(f"Emotion eyes: {'ENABLED on ' + settings.eye_serial_port if emotion_engine else 'DISABLED'}")
 
     # ── Ready greeting — all models loaded, now listening ─────────────────────
     say_boot_ready()
+
+    # Eyes: boot-open animation now that everything is ready
+    if emotion_engine:
+        emotion_engine.boot_open()
 
     try:
         while True:
@@ -127,6 +154,7 @@ async def run():
                 recognizer=identity_pipeline._recognizer,
                 audio_queue=audio_pipeline.online_queue,
                 identity_pipeline=identity_pipeline,
+                emotion_engine=emotion_engine,
             )
 
             sleeping = threading.Event()
@@ -172,6 +200,8 @@ async def run():
         log.info("Shutting down WALL-E AI...")
         if FACE_AVAILABLE:
             face_engine.stop()
+        if emotion_engine:
+            emotion_engine.shutdown()
         await registry.stop_all()
 
 

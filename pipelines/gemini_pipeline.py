@@ -30,6 +30,12 @@ from pipelines.tool_pipeline import tool_registry
 
 log = get_logger("pipeline.gemini")
 
+# Lazy import — EmotionEngine is optional (only on Pi hardware builds)
+try:
+    from emotion_engine import EmotionEngine as _EmotionEngine
+except ImportError:
+    _EmotionEngine = None  # type: ignore
+
 # ── Voice gender mapping ──────────────────────────────────────────────────────
 _FEMALE_VOICES = {"Aoede", "Kore", "Leda", "Zephyr", "Puck"}
 _MALE_VOICES   = {"Charon", "Fenrir", "Orus", "Iapetus"}
@@ -239,6 +245,7 @@ class WalleSession:
         recognizer=None,
         audio_queue=None,       # hardware mode: mic queue
         identity_pipeline=None, # optional IdentityPipeline for mid-session ID
+        emotion_engine=None,    # optional EmotionEngine for eye display (hardware mode)
     ):
         self.mode           = mode
         self.ws             = websocket
@@ -278,6 +285,7 @@ class WalleSession:
         self._face_engine     = face_engine
         self._recognizer      = recognizer
         self._identity        = identity_pipeline
+        self._emotion         = emotion_engine   # EmotionEngine | None
         self._last_injected   = None
         self._last_speaker_check = 0.0
 
@@ -327,6 +335,23 @@ class WalleSession:
         except Exception:
             pass
 
+    # ── Emotion helper (safe no-op when engine not present) ──────────────────
+    def _set_eye(self, emotion: str):
+        """Set eye emotion. Silently ignored if no EmotionEngine attached."""
+        if self._emotion is not None:
+            try:
+                self._emotion.set_emotion(emotion)
+            except Exception as e:
+                log.debug(f"Eye emotion error (non-critical): {e}")
+
+    def _analyze_eye(self, text: str):
+        """Analyze text sentiment and set eye emotion accordingly."""
+        if self._emotion is not None:
+            try:
+                self._emotion.analyze_text(text)
+            except Exception as e:
+                log.debug(f"Eye sentiment error (non-critical): {e}")
+
     # ── Main run loop ───────────────────────────────────────────────────────────
     async def run(self, on_sleep_callback: Callable | None = None):
         self.active = True
@@ -335,6 +360,9 @@ class WalleSession:
 
         if self.mode == "hardware" and self._hw_player:
             self._hw_player.start()
+
+        # Eyes: open and go neutral on session start
+        self._set_eye("neutral")
 
         while self.active:
             config = self._live_config()
@@ -547,6 +575,8 @@ class WalleSession:
                                     self._had_output = True
                                     self._grounding_active = False
                                     self._processing_tool  = False
+                                    # Eyes: AI is speaking
+                                    self._set_eye("speaking")
 
                                 if self.mode == "web":
                                     try:
@@ -577,6 +607,8 @@ class WalleSession:
                             detected = self._detect_identity(txt)
                             if detected:
                                 await self._on_identity_learned(detected, session)
+                            # Eyes: analyze user speech sentiment
+                            self._analyze_eye(txt)
 
                     if hasattr(sc, "output_transcription") and sc.output_transcription:
                         ot = getattr(sc.output_transcription, "text", "").strip()
@@ -594,6 +626,8 @@ class WalleSession:
                         self._processing_tool  = True
                         self._pending_tool_response = True  # track that response hasn't been sent yet
                         await self._send("state", {"orb": "tool_working"})
+                        # Eyes: thinking while processing tool
+                        self._set_eye("thinking")
 
                         loop = asyncio.get_event_loop()
                         res = await loop.run_in_executor(
@@ -631,6 +665,9 @@ class WalleSession:
                         # to Gemini, causing 1008 errors.
                         if not getattr(self, '_pending_tool_response', False):
                             self._processing_tool = False
+
+                        # Eyes: AI finished speaking — back to neutral/listening
+                        self._set_eye("neutral")
 
                     else:
                         # 🔇 Silent turn — tool call returned data, Gemini is chaining
@@ -765,6 +802,8 @@ class WalleSession:
     def stop(self):
         self.active = False
         self.stream_active = False
+        # Eyes: neutral on session end
+        self._set_eye("neutral")
 
     async def interrupt(self):
         """Cancel current WALL-E output and return to listening mode."""

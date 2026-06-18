@@ -186,6 +186,23 @@ class WalleConfig:
         default_factory=lambda: int(os.environ.get("WALLE_CAM_H", "240" if IS_RASPBERRY_PI else "480"))
     )
 
+    # ── Emotion Eyes (ESP32 OLED displays) ──────────────────────────────────
+    # Serial port for ESP32 eye controller (separate from Arduino motor controller)
+    # Pi: typically /dev/ttyUSB0 or /dev/ttyUSB1.  Override: WALLE_EYE_PORT=...
+    eye_serial_port: str = field(
+        default_factory=lambda: os.environ.get("WALLE_EYE_PORT", "/dev/ttyUSB1")
+    )
+    eye_serial_baud: int = field(
+        default_factory=lambda: int(os.environ.get("WALLE_EYE_BAUD", "115200"))
+    )
+    # Auto-enable on Pi, auto-disable on Windows/Mac (no serial ESP32 there)
+    eye_enabled: bool = field(
+        default_factory=lambda: os.environ.get(
+            "WALLE_EYES_ENABLED",
+            "1" if IS_RASPBERRY_PI else "0"
+        ).lower() not in ("0", "false", "no")
+    )
+
     # ── Deployment detection ──────────────────────────────────────────────────
     @property
     def is_production(self) -> bool:

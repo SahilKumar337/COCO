@@ -64,6 +64,7 @@ class WakePipeline(AbstractPipeline):
         self._audio_queue = audio_queue
         self._model = None
         self._ready = False
+        self._load_error = None
 
     async def start(self) -> None:
         loop = asyncio.get_event_loop()
@@ -84,6 +85,7 @@ class WakePipeline(AbstractPipeline):
             self._ready = True
             log.info(f"Wake word model loaded: whisper-{model_size} ({compute_type})")
         except Exception as e:
+            self._load_error = str(e)
             log.error(f"Failed to load wake word model: {e}")
 
     async def stop(self) -> None:
@@ -124,8 +126,8 @@ class WakePipeline(AbstractPipeline):
         # The background video audio at constant ~5000 never triggers.
         NOISE_WINDOW   = 20       # number of recent chunks to track (≈30 s)
         TRIGGER_RATIO  = 1.4      # voice must be 1.4× louder than background
-        MIN_FLOOR      = 300      # minimum noise floor (quiet room baseline)
-        MAX_FLOOR      = 3000     # cap — prevents threshold from being unreachable
+        MIN_FLOOR      = 1500     # minimum noise floor (aggressively blocks Pi USB mic hiss)
+        MAX_FLOOR      = 5000     # cap — prevents threshold from being unreachable
                                   # in loud rooms (e.g. fan, AC, background TV)
         recent_rms     = collections.deque(maxlen=NOISE_WINDOW)
         chunks_skipped = 0
@@ -179,7 +181,10 @@ class WakePipeline(AbstractPipeline):
 
                     # ── Run Whisper ───────────────────────────────────────────
                     if not self._ready or self._model is None:
-                        log.warning("AI Model is still loading into memory... please wait.")
+                        if self._load_error:
+                            log.error(f"CRITICAL: Wake word model completely failed to load! Error: {self._load_error}")
+                        else:
+                            log.warning("AI Model is still loading into memory... please wait.")
                         time.sleep(1)
                         continue
                         

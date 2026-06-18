@@ -118,37 +118,38 @@ float easeIO(float t) {
 void setTarget(Emotion e) {
   switch (e) {
     case EMO_NEUTRAL:
-      targetParams = {64,32, 28,24,10, 0,0,8, 0,0, 0,false};
+      // Width = 60 (120 wide), Height = 30 (60 high), Radius = 20, PupilRadius = 18
+      targetParams = {64,32, 60,30,20, 0,0,18, 0,0, 0,false};
       break;
     case EMO_HAPPY:
       // Eyes squint — bottom lid rises = smile look
-      targetParams = {64,30, 30,20,12, 0,-2,7, 0,10, 0,false};
+      targetParams = {64,30, 62,26,22, 0,-4,16, 0,14, 0,false};
       break;
     case EMO_SAD:
       // Droopy eyes, sad brows
-      targetParams = {64,34, 24,20,8, 0,2,6, 4,0, -15,true};
+      targetParams = {64,34, 52,26,16, 0,4,14, 8,0, -15,true};
       break;
     case EMO_ANGRY:
       // Narrowed eyes, angry brows angled inward
-      targetParams = {64,32, 30,18,6, 0,0,7, 6,0, 20,true};
+      targetParams = {64,32, 62,24,12, 0,0,15, 12,0, 20,true};
       break;
     case EMO_SURPRISED:
       // Wide open, large pupils
-      targetParams = {64,32, 34,30,14, 0,0,10, 0,0, 0,false};
+      targetParams = {64,32, 62,31,28, 0,0,22, 0,0, 0,false};
       break;
     case EMO_THINKING:
       // Normal size, pupil drifts upward
-      targetParams = {64,32, 26,22,10, 4,-5,7, 0,0, 0,false};
+      targetParams = {64,32, 56,24,20, 8,-8,16, 0,0, 0,false};
       break;
     case EMO_LISTENING:
       // Slightly wider, attentive
-      targetParams = {64,32, 30,26,11, 0,0,8, 0,0, 0,false};
+      targetParams = {64,32, 60,30,22, 0,0,18, 0,0, 0,false};
       break;
     case EMO_SPEAKING:
-      targetParams = {64,32, 28,24,10, 0,0,8, 0,0, 0,false};
+      targetParams = {64,32, 60,30,20, 0,0,18, 0,0, 0,false};
       break;
     default:
-      targetParams = {64,32, 28,24,10, 0,0,8, 0,0, 0,false};
+      targetParams = {64,32, 60,30,20, 0,0,18, 0,0, 0,false};
   }
 }
 
@@ -206,19 +207,19 @@ void drawFrame() {
   // Speaking bounce
   int16_t bY = 0;
   if (currentEmotion == EMO_SPEAKING)
-    bY = (int16_t)(sin(speakBounce) * 3.0f);
+    bY = (int16_t)(sin(speakBounce) * 5.0f);
 
   // Thinking pupil orbit
   if (currentEmotion == EMO_THINKING) {
-    pdx = (int16_t)(cos(thinkAngle) * 5.0f);
-    pdy = (int16_t)(sin(thinkAngle) * 3.0f) - 2;
+    pdx = (int16_t)(cos(thinkAngle) * 10.0f);
+    pdy = (int16_t)(sin(thinkAngle) * 6.0f) - 6;
   }
 
   // Listening pulse
   int16_t pw = 0, ph = 0;
   if (currentEmotion == EMO_LISTENING) {
-    pw = (int16_t)(sin(listenPulse) * 2.0f);
-    ph = (int16_t)(sin(listenPulse) * 1.5f);
+    pw = (int16_t)(sin(listenPulse) * 4.0f);
+    ph = (int16_t)(sin(listenPulse) * 3.0f);
   }
 
   int16_t dW = hw + pw;
@@ -246,9 +247,9 @@ void drawFrame() {
 
   // ── Eyebrow ───────────────────────────────────────────────────────────────
   if (p.showBrow) {
-    int16_t bwY  = dY - dH - 6;
-    int16_t bwLen = dW - 4;
-    int16_t bwDy  = p.browAngle * bwLen / 60;
+    int16_t bwY  = dY - dH - 3;
+    int16_t bwLen = (int16_t)(dW * 0.8f);
+    int16_t bwDy  = p.browAngle * bwLen / 100;
     for (int i = -1; i <= 1; i++)
       eyes.drawLine(cx - bwLen, bwY - bwDy + i, cx + bwLen, bwY + bwDy + i, SSD1306_WHITE);
   }
@@ -257,7 +258,7 @@ void drawFrame() {
   if (currentEmotion == EMO_THINKING) {
     int phase = (millis() / 400) % 3;
     for (int i = 0; i < 3; i++) {
-      eyes.fillCircle(cx - 10 + i*10, dY + dH + 8, (i == phase) ? 3 : 2, SSD1306_WHITE);
+      eyes.fillCircle(cx - 12 + i*12, SCREEN_HEIGHT - 4, (i == phase) ? 3 : 2, SSD1306_WHITE);
     }
   }
 

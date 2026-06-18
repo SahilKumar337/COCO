@@ -78,7 +78,6 @@ Emotion   currentEmotion = EMO_NEUTRAL;
 // ── Timing ────────────────────────────────────────────────────────────────────
 unsigned long lastFrameMs     = 0;
 unsigned long lastBlinkMs     = 0;
-unsigned long lastMicroMs     = 0;
 unsigned long emotionStartMs  = 0;
 unsigned long animStartMs     = 0;
 
@@ -103,8 +102,11 @@ bool  bootActive  = false;
 bool  sleepActive = false;
 float openProg    = 0.0f;  // 0=closed 1=open
 
-// Idle micro-movement
-int16_t microX = 0, microY = 0;
+// Looking direction parameters (natural idle look around & manual control)
+int16_t lookX = 0, lookY = 0;
+int16_t lookTargetX = 0, lookTargetY = 0;
+unsigned long lastLookChangeMs = 0;
+unsigned long nextLookDelayMs  = 3000;
 
 // ── Math helpers ──────────────────────────────────────────────────────────────
 int16_t lerpI(int16_t a, int16_t b, float t) {
@@ -200,9 +202,9 @@ void drawFrame() {
     lidB = max(lidB, bl);
   }
 
-  // Pupil position with micro-drift
-  int16_t pdx = p.pupilX + microX;
-  int16_t pdy = p.pupilY + microY;
+  // Pupil position with looking offset
+  int16_t pdx = p.pupilX + lookX;
+  int16_t pdy = p.pupilY + lookY;
 
   // Speaking bounce
   int16_t bY = 0;
@@ -290,11 +292,36 @@ void updateAnimations() {
     }
   }
 
-  // Micro-movement (natural idle look)
-  if (now - lastMicroMs >= 3000 && currentEmotion == EMO_NEUTRAL) {
-    microX = random(-2, 3);
-    microY = random(-1, 2);
-    lastMicroMs = now;
+  // Smooth look transitions (lerp for organic movement)
+  lookX = lookX + (int16_t)((float)(lookTargetX - lookX) * 0.18f);
+  lookY = lookY + (int16_t)((float)(lookTargetY - lookY) * 0.18f);
+
+  // Organic idle look around
+  if (currentEmotion == EMO_NEUTRAL || currentEmotion == EMO_HAPPY || currentEmotion == EMO_SAD || currentEmotion == EMO_SURPRISED) {
+    if (now - lastLookChangeMs >= nextLookDelayMs) {
+      int r = random(0, 100);
+      if (r < 50) {
+        // Look straight (50% chance)
+        lookTargetX = 0;
+        lookTargetY = 0;
+        nextLookDelayMs = random(2000, 5000);
+      } else if (r < 75) {
+        // Look Left (25% chance)
+        lookTargetX = random(-22, -12);
+        lookTargetY = random(-3, 3);
+        nextLookDelayMs = random(1000, 3000);
+      } else {
+        // Look Right (25% chance)
+        lookTargetX = random(12, 22);
+        lookTargetY = random(-3, 3);
+        nextLookDelayMs = random(1000, 3000);
+      }
+      lastLookChangeMs = now;
+    }
+  } else {
+    // Force center for thinking, listening, speaking, etc.
+    lookTargetX = 0;
+    lookTargetY = 0;
   }
 
   // Per-emotion animations
@@ -332,6 +359,24 @@ void handleCmd(char c) {
     case 'B':
       if (!isBlinking) { isBlinking = true; blinkMs = millis(); blinkProg = 0; }
       Serial.println("ACK:BLINK");
+      break;
+    case 'I': // Manual Look Left (caps 'i' or 'I')
+      lookTargetX = -22;
+      lookTargetY = 0;
+      lastLookChangeMs = millis() + 5000; // Delay auto-look around for 5 seconds
+      Serial.println("ACK:LOOK_LEFT");
+      break;
+    case 'R': // Manual Look Right
+      lookTargetX = 22;
+      lookTargetY = 0;
+      lastLookChangeMs = millis() + 5000; // Delay auto-look around for 5 seconds
+      Serial.println("ACK:LOOK_RIGHT");
+      break;
+    case 'C': // Manual Look Center
+      lookTargetX = 0;
+      lookTargetY = 0;
+      lastLookChangeMs = millis() + 5000; // Delay auto-look around for 5 seconds
+      Serial.println("ACK:LOOK_CENTER");
       break;
     case 'O':
       bootActive = true; sleepActive = false;
@@ -384,7 +429,7 @@ void setup() {
   animStartMs = millis();
 
   lastBlinkMs = millis();
-  lastMicroMs = millis();
+  lastLookChangeMs = millis();
   nextBlink   = random(BLINK_MIN_MS, BLINK_MAX_MS);
   randomSeed(analogRead(0));
 

@@ -591,10 +591,8 @@ class WalleSession:
                 return None
             try:
                 data = self._raw_mic_queue.get_nowait()
-                # Echo suppression: send silence when WALL-E is playing audio
-                if self._hw_player and self._hw_player._speaking.is_set():
-                    silence = b"\x00" * len(data)
-                    return silence
+                # Removed software echo suppression. WebRTC AEC now handles this 
+                # at the OS level, enabling true full-duplex interruption!
                 return data
             except _queue.Empty:
                 await asyncio.sleep(0.01)

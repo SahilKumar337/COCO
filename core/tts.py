@@ -58,6 +58,41 @@ def _espeak(text: str) -> bool:
         log.warning(f"espeak-ng error: {e}")
         return False
 
+def play_wake_chime() -> bool:
+    """
+    Plays a Siri-style instant dual-tone ascending chime.
+    Takes ~0.2 seconds and sounds highly professional.
+    """
+    try:
+        import sounddevice as sd
+        import numpy as np
+        
+        fs = 44100
+        # Siri-style rising tones: G#4 (415Hz) -> C#5 (554Hz)
+        f1, f2 = 415.3, 554.37
+        duration1, duration2 = 0.1, 0.15
+        
+        t1 = np.linspace(0, duration1, int(fs * duration1), False)
+        t2 = np.linspace(0, duration2, int(fs * duration2), False)
+        
+        # Exponential decay envelope for a "ping" sound
+        env1 = np.exp(-15 * t1)
+        env2 = np.exp(-10 * t2)
+        
+        # Combine the sine waves with their envelopes
+        tone1 = np.sin(2 * np.pi * f1 * t1) * env1
+        tone2 = np.sin(2 * np.pi * f2 * t2) * env2
+        
+        # Concatenate and normalize
+        wave = np.concatenate((tone1, tone2))
+        wave = wave * 0.5  # 50% volume
+        
+        # Play instantly (blocks for 0.25s until finished)
+        sd.play(wave, fs, blocking=True)
+        return True
+    except Exception as e:
+        log.warning(f"Failed to play wake chime: {e}")
+        return False
 
 def speak(text: str, block: bool = True) -> None:
     """

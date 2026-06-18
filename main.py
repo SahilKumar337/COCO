@@ -25,7 +25,7 @@ load_dotenv()
 from core.config import settings
 from core.logger import get_logger
 from core.registry import registry
-from core.tts import speak, say_boot_ready, say_session_start, say_connectivity_error, say_quota_error
+from core.tts import speak, say_boot_ready, play_wake_chime, say_connectivity_error, say_quota_error
 from pipelines.audio_pipeline import AudioPipeline
 from pipelines.wake_pipeline import WakePipeline
 from pipelines.identity_pipeline import IdentityPipeline
@@ -122,7 +122,7 @@ async def run():
 
             # ── Wake greeting ─────────────────────────────────────────────────
             # Use instant local TTS for the greeting so there is zero network delay
-            say_session_start(speaker_name)
+            play_wake_chime()
             
             # Flush any physical echo of the greeting that the microphone just recorded!
             # If we don't flush this, Gemini will hear the echo and start looping!

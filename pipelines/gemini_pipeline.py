@@ -212,9 +212,9 @@ class _HardwareAudioPlayer:
             self._buffer.extend(data)
 
     def is_speaking(self) -> bool:
-        # Pad the speaking state by 0.5 seconds to account for ALSA/PulseAudio latency
-        # and physical room reverberation, preventing the mic from picking up echo!
-        return self._speaking.is_set() or (self._time.time() - self._last_play < 0.5)
+        # Pad the speaking state by 0.15 seconds to account for audio server latency
+        # and physical room reverberation, preventing the mic from picking up echo.
+        return self._speaking.is_set() or (self._time.time() - self._last_play < 0.15)
 
     def is_empty(self) -> bool:
         with self._lock:
@@ -498,8 +498,8 @@ class WalleSession:
                 if not audio_bytes:
                     continue
 
-                # If AI is speaking, zero out the microphone input to prevent echo loop
-                if self.mode == "hardware" and self._hw_player and self._hw_player.is_speaking():
+                # If software mute is enabled and AI is speaking, zero out the microphone input to prevent echo loop
+                if self.mode == "hardware" and self._hw_player and self._hw_player.is_speaking() and settings.software_mute:
                     audio_bytes = b"\x00" * len(audio_bytes)
 
                 try:

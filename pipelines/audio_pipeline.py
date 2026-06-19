@@ -159,10 +159,15 @@ class AudioPipeline(AbstractPipeline):
                         # Target comfortable speaking RMS of 3000
                         target_rms = 3000.0
                         ideal_gain = target_rms / raw_rms
-                        # Limit dynamic gain between 1.0x (no boost) and 32.0x (max safety boost)
-                        ideal_gain = min(max(ideal_gain, 1.0), 32.0)
-                        # Smooth gain adjustments (5% change per block to prevent volume jumps)
-                        self._gain = self._gain + 0.05 * (ideal_gain - self._gain)
+                        # Limit dynamic gain: never let it drop below a safe minimum boost based on WALLE_MIC_GAIN
+                        min_gain = max(1.0, settings.mic_gain / 2.0)
+                        ideal_gain = min(max(ideal_gain, min_gain), 32.0)
+                        
+                        # Dual-rate smoothing: recover fast from loud sounds (15% per block), damp down slowly (5% per block)
+                        if ideal_gain > self._gain:
+                            self._gain = self._gain + 0.15 * (ideal_gain - self._gain)
+                        else:
+                            self._gain = self._gain + 0.05 * (ideal_gain - self._gain)
                         
                         log_counter += 1
                         if log_counter % 20 == 0:

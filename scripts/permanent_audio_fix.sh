@@ -152,4 +152,3 @@ info "Status command:  systemctl --user status walle"
 info "Logs command:    journalctl --user -u walle -f"
 log "==============================================================="
 log ""
-EOF

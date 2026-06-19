@@ -31,7 +31,7 @@ psycopg2-binary>=2.9.9    # PostgreSQL (production/Railway/Render)
 # ─── Utilities ───────────────────────────────────────────────────────────────
 numpy>=1.26.0
 python-dotenv>=1.0.1
-ddgs>=9.0.0                  # Web search (renamed from duckduckgo_search)
+duckduckgo-search>=6.2.4     # Web search tool
 
 # ─── Arduino / Navigation (optional) ─────────────────────────────────────────
 pyserial>=3.5

@@ -227,11 +227,7 @@ def open_application(app_name: str) -> str:
 def web_search(query: str, max_results: str = "5") -> str:
     """Search the web via DuckDuckGo and return summarised results."""
     try:
-        # Package was renamed from 'duckduckgo_search' to 'ddgs'
-        try:
-            from ddgs import DDGS
-        except ImportError:
-            from duckduckgo_search import DDGS  # fallback for older installs
+        from duckduckgo_search import DDGS
         n = max(1, min(int(max_results), 10))
         results = []
         with DDGS() as ddgs_client:

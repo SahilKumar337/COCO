@@ -369,6 +369,7 @@ class WalleSession:
         # Eyes: open and go neutral on session start
         self._set_eye("neutral")
 
+        disconnect_start = None
         while self.active:
             config = self._live_config()
             models = [self.last_model] if self.last_model else settings.gemini_models
@@ -376,6 +377,7 @@ class WalleSession:
 
             for model in models:
                 try:
+                    log.info(f"Connecting to Gemini Live session using model: {model}...")
                     async with self._client.aio.live.connect(
                         model=model, config=config
                     ) as session:
@@ -388,8 +390,9 @@ class WalleSession:
                         await self._send("status", {"state": "connected"})
                         self.stream_active = True
                         retry_delay = 1.5  # reset backoff on successful connect
-                        # Removed system_event greeting. Greeting is now handled locally 
-                        # in main.py via espeak-ng for instant zero-latency feedback.
+                        disconnect_start = None  # reset disconnection timer
+                        log.info(f"Successfully connected to Gemini Live session.")
+                        
                         tasks = [
                             asyncio.create_task(self._pipeline_send(session)),
                             asyncio.create_task(self._pipeline_recv(session, on_sleep_callback)),
@@ -404,6 +407,7 @@ class WalleSession:
                             t.cancel()
                         await asyncio.gather(*tasks, return_exceptions=True)
 
+                        log.info("Gemini Live session disconnected.")
                         if not self.active:
                             return
                         connected = True
@@ -439,6 +443,14 @@ class WalleSession:
                     continue
 
             if not connected:
+                if disconnect_start is None:
+                    disconnect_start = time.time()
+                elif time.time() - disconnect_start > 15.0:
+                    log.warning("Failed to reconnect to Gemini Live within 15 seconds. Exiting session.")
+                    self.active = False
+                    self.stream_active = False
+                    raise ConnectionError("Gemini Live connection lost and could not reconnect within 15 seconds.")
+
                 await self._send("status", {"state": "reconnecting"})
                 log.info(f"Reconnecting in {retry_delay:.1f}s...")
                 await asyncio.sleep(retry_delay)
@@ -544,12 +556,12 @@ class WalleSession:
                 await asyncio.sleep(0.1)
                 return None
             try:
-                # Flush backlog: if the queue has built up, drop all but the last chunk
-                # to prevent audio latency/lag.
+                # Flush backlog: if the queue has built up significantly (e.g., > 2 seconds),
+                # drop stale chunks but keep the last 3 chunks to prevent cutting off speech.
                 qsize = self._raw_mic_queue.qsize()
-                if qsize > 2:
+                if qsize > 8:
                     log.warning(f"Microphone queue backlog detected ({qsize} chunks) — flushing stale audio to prevent lag.")
-                    while qsize > 1:
+                    while qsize > 3:
                         try:
                             self._raw_mic_queue.get_nowait()
                             qsize -= 1

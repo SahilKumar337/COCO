@@ -154,24 +154,30 @@ class AudioPipeline(AbstractPipeline):
                 if use_agc:
                     # Calculate raw RMS before gain is applied
                     raw_rms = float(np.sqrt(np.mean(arr ** 2)))
-                    # Only adapt gain if there's active speech/sound (ignore absolute silence to prevent hiss boost)
-                    if raw_rms > 150.0:
-                        # Target comfortable speaking RMS of 3000
-                        target_rms = 3000.0
+                    # Only adapt gain if there's active speech/sound (ignore background noise/silence below 350 RMS)
+                    if raw_rms > 350.0:
+                        # Target comfortable speaking RMS of 1500
+                        target_rms = 1500.0
                         ideal_gain = target_rms / raw_rms
                         # Limit dynamic gain: never let it drop below a safe minimum boost based on WALLE_MIC_GAIN
                         min_gain = max(1.0, settings.mic_gain / 2.0)
                         ideal_gain = min(max(ideal_gain, min_gain), 32.0)
                         
-                        # Dual-rate smoothing: recover fast from loud sounds (15% per block), damp down slowly (5% per block)
+                        # Dual-rate smoothing: 
+                        # - Recover sensitivity slowly (2% per block) to avoid boosting static/breath between words
+                        # - Reduce gain quickly (20% per block) when loud shouting occurs to prevent digital clipping
                         if ideal_gain > self._gain:
-                            self._gain = self._gain + 0.15 * (ideal_gain - self._gain)
+                            self._gain = self._gain + 0.02 * (ideal_gain - self._gain)
                         else:
-                            self._gain = self._gain + 0.05 * (ideal_gain - self._gain)
+                            self._gain = self._gain + 0.20 * (ideal_gain - self._gain)
                         
                         log_counter += 1
                         if log_counter % 20 == 0:
                             log.info(f"[AGC] Dynamic gain adjusted to {self._gain:.2f}x (raw RMS={raw_rms:.0f})")
+                    else:
+                        # During silence/noise floor, slowly decay the gain back to the default mic_gain
+                        # This prevents the gain from staying stuck at a high value and boosting hiss
+                        self._gain = self._gain + 0.01 * (settings.mic_gain - self._gain)
 
                 arr = np.clip(arr * self._gain, -32768, 32767)
                 raw = arr.astype(np.int16).tobytes()

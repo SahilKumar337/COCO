@@ -131,6 +131,15 @@ if [[ -f "$ENV_FILE" ]]; then
         echo "WALLE_MIC_AGC=1" >> "$ENV_FILE"
         info "Added WALLE_MIC_AGC=1 (Automatic Gain Control enabled)"
     fi
+
+    # 3. Force WALLE_SOFTWARE_MUTE=1 to prevent speaker-mic feedback loop
+    if grep -q "^WALLE_SOFTWARE_MUTE=" "$ENV_FILE"; then
+        sed -i 's/^WALLE_SOFTWARE_MUTE=.*/WALLE_SOFTWARE_MUTE=1/' "$ENV_FILE"
+        info "Set WALLE_SOFTWARE_MUTE=1 (Software mute during playback enabled)"
+    else
+        echo "WALLE_SOFTWARE_MUTE=1" >> "$ENV_FILE"
+        info "Added WALLE_SOFTWARE_MUTE=1 (Software mute during playback enabled)"
+    fi
 else
     warn ".env file not found in $PROJECT_DIR. Please copy .env.example to .env."
 fi

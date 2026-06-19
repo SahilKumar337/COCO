@@ -133,7 +133,7 @@ class WalleConfig:
     )
     # Enable software muting of microphone during playback (prevents echo if no hardware/OS AEC is present)
     software_mute: bool = field(
-        default_factory=lambda: os.environ.get("WALLE_SOFTWARE_MUTE", "0").lower() in ("1", "true", "yes")
+        default_factory=lambda: os.environ.get("WALLE_SOFTWARE_MUTE", "1").lower() in ("1", "true", "yes")
     )
 
     # ── Wake Word ─────────────────────────────────────────────────────────────

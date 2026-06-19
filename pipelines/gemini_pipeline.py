@@ -212,9 +212,8 @@ class _HardwareAudioPlayer:
             self._buffer.extend(data)
 
     def is_speaking(self) -> bool:
-        # Pad the speaking state by 0.15 seconds to account for audio server latency
-        # and physical room reverberation, preventing the mic from picking up echo.
-        return self._speaking.is_set() or (self._time.time() - self._last_play < 0.15)
+        # Pad the speaking state by 0.02 seconds to unmute immediately after playback ends
+        return self._speaking.is_set() or (self._time.time() - self._last_play < 0.02)
 
     def is_empty(self) -> bool:
         with self._lock:

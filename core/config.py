@@ -126,6 +126,11 @@ class WalleConfig:
     mic_gain: float = field(
         default_factory=lambda: float(os.environ.get("WALLE_MIC_GAIN", "16.0"))
     )
+    # Enable software Automatic Gain Control (AGC).
+    # If 1, dynamically adjusts gain to keep voice at optimal volume.
+    mic_agc: bool = field(
+        default_factory=lambda: os.environ.get("WALLE_MIC_AGC", "0").lower() in ("1", "true", "yes")
+    )
 
     # ── Wake Word ─────────────────────────────────────────────────────────────
     wake_variants: list = field(

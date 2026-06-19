@@ -132,11 +132,16 @@ class AudioPipeline(AbstractPipeline):
         The gain option is kept as a safety valve for environments
         where PulseAudio is not available.
         """
-        apply_gain = self._gain != 1.0
+        use_agc = settings.mic_agc
+        apply_gain = (self._gain != 1.0) or use_agc
         log.info(
             f"Audio worker started — gain={self._gain}x "
-            f"({'PulseAudio AGC active' if not apply_gain else 'software gain active'})"
+            f"({'PulseAudio AGC active' if not apply_gain else 'software gain active'}) "
+            f"AGC={'ENABLED' if use_agc else 'DISABLED'}"
         )
+        
+        log_counter = 0
+
         while self._started or not self._raw_queue.empty():
             try:
                 raw = self._raw_queue.get(timeout=0.5)
@@ -145,6 +150,24 @@ class AudioPipeline(AbstractPipeline):
 
             if apply_gain:
                 arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+
+                if use_agc:
+                    # Calculate raw RMS before gain is applied
+                    raw_rms = float(np.sqrt(np.mean(arr ** 2)))
+                    # Only adapt gain if there's active speech/sound (ignore absolute silence to prevent hiss boost)
+                    if raw_rms > 150.0:
+                        # Target comfortable speaking RMS of 3000
+                        target_rms = 3000.0
+                        ideal_gain = target_rms / raw_rms
+                        # Limit dynamic gain between 1.0x (no boost) and 32.0x (max safety boost)
+                        ideal_gain = min(max(ideal_gain, 1.0), 32.0)
+                        # Smooth gain adjustments (5% change per block to prevent volume jumps)
+                        self._gain = self._gain + 0.05 * (ideal_gain - self._gain)
+                        
+                        log_counter += 1
+                        if log_counter % 20 == 0:
+                            log.info(f"[AGC] Dynamic gain adjusted to {self._gain:.2f}x (raw RMS={raw_rms:.0f})")
+
                 arr = np.clip(arr * self._gain, -32768, 32767)
                 raw = arr.astype(np.int16).tobytes()
 

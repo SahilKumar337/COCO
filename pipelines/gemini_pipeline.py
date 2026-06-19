@@ -545,6 +545,17 @@ class WalleSession:
                 await asyncio.sleep(0.1)
                 return None
             try:
+                # Flush backlog: if the queue has built up, drop all but the last chunk
+                # to prevent audio latency/lag.
+                qsize = self._raw_mic_queue.qsize()
+                if qsize > 2:
+                    log.warning(f"Microphone queue backlog detected ({qsize} chunks) — flushing stale audio to prevent lag.")
+                    while qsize > 1:
+                        try:
+                            self._raw_mic_queue.get_nowait()
+                            qsize -= 1
+                        except _queue.Empty:
+                            break
                 data = self._raw_mic_queue.get_nowait()
                 # WebRTC AEC will handle echo at the OS level
                 # This enables true full-duplex interruptions!

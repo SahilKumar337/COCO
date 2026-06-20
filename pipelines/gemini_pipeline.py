@@ -401,11 +401,16 @@ class WalleSession:
                         if self.mode == "hardware":
                             tasks.append(asyncio.create_task(self._vision_loop(session)))
 
-                        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                         self.stream_active = False
                         for t in tasks:
                             t.cancel()
-                        await asyncio.gather(*tasks, return_exceptions=True)
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                        # Log any exceptions that caused the failure
+                        for t, res in zip(tasks, results):
+                            if isinstance(res, Exception) and not isinstance(res, asyncio.CancelledError):
+                                log.error(f"Task failure: {res}", exc_info=res)
 
                         log.info("Gemini Live session disconnected.")
                         if not self.active:

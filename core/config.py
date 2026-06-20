@@ -135,6 +135,19 @@ class WalleConfig:
     software_mute: bool = field(
         default_factory=lambda: os.environ.get("WALLE_SOFTWARE_MUTE", "1").lower() in ("1", "true", "yes")
     )
+    # Adaptive software noise gate to filter out background noise/chatter in crowded rooms
+    noise_gate_enabled: bool = field(
+        default_factory=lambda: os.environ.get("WALLE_NOISE_GATE_ENABLED", "1").lower() not in ("0", "false", "no")
+    )
+    noise_gate_threshold: float = field(
+        default_factory=lambda: float(os.environ.get("WALLE_NOISE_GATE_THRESHOLD", "1.6"))
+    )
+    noise_gate_min_rms: float = field(
+        default_factory=lambda: float(os.environ.get("WALLE_NOISE_GATE_MIN_RMS", "150.0"))
+    )
+    noise_gate_attenuation: float = field(
+        default_factory=lambda: float(os.environ.get("WALLE_NOISE_GATE_ATTENUATION", "0.0"))
+    )
 
     # ── Wake Word ─────────────────────────────────────────────────────────────
     wake_word_enabled: bool = field(

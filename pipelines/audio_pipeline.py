@@ -147,11 +147,12 @@ class AudioPipeline(AbstractPipeline):
         where PulseAudio is not available.
         """
         use_agc = settings.mic_agc
-        apply_gain = (self._gain != 1.0) or use_agc
+        apply_gain = (self._gain != 1.0) or use_agc or settings.noise_gate_enabled
         log.info(
             f"Audio worker started — gain={self._gain}x "
-            f"({'PulseAudio AGC active' if not apply_gain else 'software gain active'}) "
-            f"AGC={'ENABLED' if use_agc else 'DISABLED'}"
+            f"({'PulseAudio AGC active' if not apply_gain else 'software processing active'}) "
+            f"AGC={'ENABLED' if use_agc else 'DISABLED'} "
+            f"NoiseGate={'ENABLED' if settings.noise_gate_enabled else 'DISABLED'}"
         )
         
         log_counter = 0
@@ -164,36 +165,82 @@ class AudioPipeline(AbstractPipeline):
 
             if apply_gain:
                 arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+                raw_rms = float(np.sqrt(np.mean(arr ** 2)))
 
-                if use_agc:
-                    # Calculate raw RMS before gain is applied
-                    raw_rms = float(np.sqrt(np.mean(arr ** 2)))
-                    # Only adapt gain if there's active speech/sound (ignore background noise/silence below 350 RMS)
-                    if raw_rms > 350.0:
-                        # Target comfortable speaking RMS of 1500
-                        target_rms = 1500.0
-                        ideal_gain = target_rms / raw_rms
-                        # Limit dynamic gain: never let it drop below a safe minimum boost based on WALLE_MIC_GAIN
-                        min_gain = max(1.0, settings.mic_gain / 2.0)
-                        ideal_gain = min(max(ideal_gain, min_gain), 32.0)
+                if settings.noise_gate_enabled:
+                    # 1. Asymmetrical valley tracker for dynamic noise floor estimation
+                    if not hasattr(self, "_noise_floor"):
+                        self._noise_floor = max(raw_rms, 150.0)
+                    
+                    if raw_rms < self._noise_floor:
+                        # Quick fall to lower noise floor
+                        self._noise_floor = self._noise_floor + 0.15 * (raw_rms - self._noise_floor)
+                    else:
+                        # Extremely slow rise (so speech peaks don't bias the floor estimate)
+                        self._noise_floor = self._noise_floor + 0.003 * (raw_rms - self._noise_floor)
+                    
+                    self._noise_floor = min(max(self._noise_floor, 50.0), 2000.0)
+
+                    # 2. Speech classification & hangover
+                    is_speech = (raw_rms > self._noise_floor * settings.noise_gate_threshold) and (raw_rms > settings.noise_gate_min_rms)
+                    
+                    if not hasattr(self, "_speech_hangover_blocks"):
+                        self._speech_hangover_blocks = 0
+                    
+                    if is_speech:
+                        self._speech_hangover_blocks = 3  # keep open for ~768ms
+
+                    # 3. Apply noise gate & AGC
+                    if self._speech_hangover_blocks > 0:
+                        self._speech_hangover_blocks -= 1
+                        # Gate is OPEN — apply gain and optional AGC adaptation
+                        if use_agc:
+                            target_rms = 1500.0
+                            ideal_gain = target_rms / raw_rms
+                            min_gain = max(1.0, settings.mic_gain / 2.0)
+                            ideal_gain = min(max(ideal_gain, min_gain), 32.0)
+
+                            if ideal_gain > self._gain:
+                                self._gain = self._gain + 0.02 * (ideal_gain - self._gain)
+                            else:
+                                self._gain = self._gain + 0.20 * (ideal_gain - self._gain)
+
+                            log_counter += 1
+                            if log_counter % 20 == 0:
+                                log.info(f"[AGC] Speech active, dynamic gain={self._gain:.2f}x (raw RMS={raw_rms:.0f}, noise floor={self._noise_floor:.0f})")
                         
-                        # Dual-rate smoothing: 
-                        # - Recover sensitivity slowly (2% per block) to avoid boosting static/breath between words
-                        # - Reduce gain quickly (20% per block) when loud shouting occurs to prevent digital clipping
-                        if ideal_gain > self._gain:
-                            self._gain = self._gain + 0.02 * (ideal_gain - self._gain)
-                        else:
-                            self._gain = self._gain + 0.20 * (ideal_gain - self._gain)
+                        arr = arr * self._gain
+                    else:
+                        # Gate is CLOSED — silence/attenuate signal and decay gain back to base
+                        self._gain = self._gain + 0.01 * (settings.mic_gain - self._gain)
+                        arr = arr * settings.noise_gate_attenuation
                         
                         log_counter += 1
-                        if log_counter % 20 == 0:
-                            log.info(f"[AGC] Dynamic gain adjusted to {self._gain:.2f}x (raw RMS={raw_rms:.0f})")
-                    else:
-                        # During silence/noise floor, slowly decay the gain back to the default mic_gain
-                        # This prevents the gain from staying stuck at a high value and boosting hiss
-                        self._gain = self._gain + 0.01 * (settings.mic_gain - self._gain)
+                        if log_counter % 40 == 0:
+                            log.debug(f"[NoiseGate] Closed (raw RMS={raw_rms:.0f}, noise floor={self._noise_floor:.0f})")
+                else:
+                    # Legacy AGC without noise gate
+                    if use_agc:
+                        if raw_rms > 350.0:
+                            target_rms = 1500.0
+                            ideal_gain = target_rms / raw_rms
+                            min_gain = max(1.0, settings.mic_gain / 2.0)
+                            ideal_gain = min(max(ideal_gain, min_gain), 32.0)
 
-                arr = np.clip(arr * self._gain, -32768, 32767)
+                            if ideal_gain > self._gain:
+                                self._gain = self._gain + 0.02 * (ideal_gain - self._gain)
+                            else:
+                                self._gain = self._gain + 0.20 * (ideal_gain - self._gain)
+
+                            log_counter += 1
+                            if log_counter % 20 == 0:
+                                log.info(f"[AGC] Dynamic gain adjusted to {self._gain:.2f}x (raw RMS={raw_rms:.0f})")
+                        else:
+                            self._gain = self._gain + 0.01 * (settings.mic_gain - self._gain)
+                    
+                    arr = arr * self._gain
+
+                arr = np.clip(arr, -32768, 32767)
                 raw = arr.astype(np.int16).tobytes()
 
             self.online_queue.put(raw)

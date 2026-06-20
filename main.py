@@ -61,7 +61,8 @@ async def run():
     # Boot pipelines ──────────────────────────────────────────────────────
     audio_pipeline    = registry.register(AudioPipeline())
     # identity_pipeline = registry.register(IdentityPipeline()) # Disabled to free up CPU
-    nav_pipeline      = registry.register(NavigationPipeline(audio_pipeline.offline_queue))
+    # nav_pipeline      = registry.register(NavigationPipeline(audio_pipeline.offline_queue)) # Disabled temporarily to save CPU
+    nav_pipeline      = None
     
     wake_pipeline = None
     if settings.wake_word_enabled:

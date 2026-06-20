@@ -62,7 +62,10 @@ async def run():
     audio_pipeline    = registry.register(AudioPipeline())
     # identity_pipeline = registry.register(IdentityPipeline()) # Disabled to free up CPU
     nav_pipeline      = registry.register(NavigationPipeline(audio_pipeline.offline_queue))
-    wake_pipeline     = registry.register(WakePipeline(audio_pipeline.online_queue))
+    
+    wake_pipeline = None
+    if settings.wake_word_enabled:
+        wake_pipeline = registry.register(WakePipeline(audio_pipeline.online_queue))
 
     log.info(f"Registered {registry.count} pipelines.")
 
@@ -91,8 +94,11 @@ async def run():
         face_engine.start()
         # identity_pipeline.attach_face_engine(face_engine) # Disabled
 
-    log.info(f"Wake variants: {settings.wake_variants}")
-    log.info(f"Anti-impersonation: ENABLED — owner requires strict voiceprint")
+    if settings.wake_word_enabled:
+        log.info(f"Wake variants: {settings.wake_variants}")
+        log.info(f"Anti-impersonation: ENABLED — owner requires strict voiceprint")
+    else:
+        log.info("Wake word detection: DISABLED (Direct interaction mode)")
     log.info(f"Face recognition: {'ENABLED' if FACE_AVAILABLE else 'DISABLED (voice only)'}")
     log.info(f"Emotion eyes: {'ENABLED on ' + settings.eye_serial_port if emotion_engine else 'DISABLED'}")
 
@@ -106,33 +112,29 @@ async def run():
     try:
         while True:
             # ── Wait for wake word ─────────────────────────────────────────────
-            log.info(f"Waiting for wake word {settings.wake_variants}...")
-            audio_file_path = await wake_pipeline.wait_for_wake()
+            if settings.wake_word_enabled and wake_pipeline is not None:
+                log.info(f"Waiting for wake word {settings.wake_variants}...")
+                audio_file_path = await wake_pipeline.wait_for_wake()
+
+                # Clean up temp audio file
+                try:
+                    os.unlink(audio_file_path)
+                except Exception:
+                    pass
+            else:
+                log.info("Wake word bypassed (Direct interaction mode).")
 
             # ── Identify speaker (Disabled to free CPU for Gemini) ────────────
-            log.info("Analyzing identity... (Disabled for max speed)")
             speaker_name = "Unknown"
             await asyncio.sleep(0.1)  # Yield event loop to ensure audio buffers are ready
 
-            log.info(f"Speaker identified: {speaker_name}")
-
-            # ── Wake greeting ─────────────────────────────────────────────────
-            # Use instant local TTS for the greeting so there is zero network delay
-            
-            # Flush any physical echo of the greeting that the microphone just recorded!
-            # If we don't flush this, Gemini will hear the echo and start looping!
+            # Flush any physical echo/stale audio that the microphone just recorded!
             import queue
             while not audio_pipeline.online_queue.empty():
                 try:
                     audio_pipeline.online_queue.get_nowait()
                 except queue.Empty:
                     break
-
-            # Clean up temp audio file
-            try:
-                os.unlink(audio_file_path)
-            except Exception:
-                pass
 
             # ── Start WALL-E session ───────────────────────────────────────────
             log.info(f"Starting WALL-E session for '{speaker_name}'...")

@@ -8,8 +8,14 @@ import threading
 import time
 import numpy as np
 
-# Try to import cv2 and face_recognition; graceful fallback if not installed
+import os
+
+# Try to import cv2 and face_recognition; graceful fallback if not installed or disabled
+WALLE_FACE_ENABLED = os.environ.get("WALLE_FACE_ENABLED", "1").lower() not in ("0", "false", "no")
+
 try:
+    if not WALLE_FACE_ENABLED:
+        raise ImportError("Face recognition/camera is disabled via WALLE_FACE_ENABLED=0 in .env file.")
     import cv2
     import face_recognition
     FACE_AVAILABLE = True
@@ -18,7 +24,6 @@ except ImportError as _face_err:
     face_recognition = None  # type: ignore
     FACE_AVAILABLE = False
     print(f"[Face] Face recognition disabled: {_face_err}")
-    print("[Face] Install with: pip install opencv-python-headless face_recognition")
 
 from database import load_all_faces, save_face_encoding
 

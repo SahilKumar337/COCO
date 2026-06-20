@@ -137,6 +137,9 @@ class WalleConfig:
     )
 
     # ── Wake Word ─────────────────────────────────────────────────────────────
+    wake_word_enabled: bool = field(
+        default_factory=lambda: os.environ.get("WALLE_WAKE_WORD_ENABLED", "1").lower() not in ("0", "false", "no")
+    )
     wake_variants: list = field(
         default_factory=lambda: [
             "wall-e", "walle", "wally", "wali", "wole",

@@ -88,10 +88,10 @@ class WakePipeline(AbstractPipeline):
                 f"compute={compute_type}, pi={settings.is_raspberry_pi})..."
             )
             self._model = WhisperModel(
-                model_size, device="cpu", compute_type=compute_type
+                model_size, device="cpu", compute_type=compute_type, cpu_threads=1
             )
             self._ready = True
-            log.info(f"Wake word model loaded: whisper-{model_size} ({compute_type})")
+            log.info(f"Wake word model loaded: whisper-{model_size} ({compute_type}) with cpu_threads=1")
         except Exception as e:
             self._load_error = str(e)
             log.error(f"Failed to load wake word model: {e}")

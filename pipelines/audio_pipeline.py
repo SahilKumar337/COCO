@@ -46,20 +46,34 @@ def _resolve_device(hint: str) -> int | None:
     """
     Resolve WALLE_MIC_DEVICE to a sounddevice device index.
     Accepts:
-      - empty string  → None (system default — use PulseAudio default source)
-      - integer string → direct device index
-      - name substring → first case-insensitive match
+      - empty or 'auto' → auto-detects first USB microphone, falls back to system default
+      - integer string  → direct device index
+      - name substring  → first case-insensitive match (excluding 'auto')
     """
-    if not hint:
-        return None
-    if hint.isdigit():
+    devices = list(sd.query_devices())
+    
+    # 1. If explicit integer index
+    if hint and hint.isdigit():
         return int(hint)
-    hint_lower = hint.lower()
-    for idx, dev in enumerate(sd.query_devices()):
-        if hint_lower in dev["name"].lower():
-            log.info(f"Audio device matched: [{idx}] {dev['name']}")
-            return idx
-    log.warning(f"No audio device matching '{hint}' — using system default.")
+        
+    # 2. If explicit name search hint (excluding 'auto')
+    if hint and hint.lower() != "auto":
+        hint_lower = hint.lower()
+        for idx, dev in enumerate(devices):
+            if dev["max_input_channels"] > 0 and hint_lower in dev["name"].lower():
+                log.info(f"Audio device matched hint '{hint}': [{idx}] {dev['name']}")
+                return idx
+        log.warning(f"No audio device matching hint '{hint}' — trying auto-detect.")
+
+    # 3. Auto-detection: search for USB/Mic input device
+    for idx, dev in enumerate(devices):
+        if dev["max_input_channels"] > 0:
+            dev_name = dev["name"].lower()
+            if any(k in dev_name for k in ("usb", "mic", "respeaker", "audio")):
+                log.info(f"Auto-detected USB/Mic audio device: [{idx}] {dev['name']}")
+                return idx
+                
+    log.info("No USB or Mic device auto-detected — using system default audio source.")
     return None
 
 

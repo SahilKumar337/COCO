@@ -6,12 +6,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SerialEngine")
 
 class SerialEngine:
-    def __init__(self, port='/dev/ttyACM0', baudrate=115200):
+    def __init__(self, port=None, baudrate=115200):
         """
         Initializes the communication with the Arduino.
-        Note: The port might be /dev/ttyUSB0 depending on the Arduino connection.
+        Note: The port defaults to settings.arduino_port or /dev/ttyACM0.
         """
-        self.port = port
+        from core.config import settings
+        self.port = port or settings.arduino_port or '/dev/ttyACM0'
         self.baudrate = baudrate
         self.ser = None
         self.connect()

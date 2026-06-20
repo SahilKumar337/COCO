@@ -196,11 +196,14 @@ class WalleConfig:
         default_factory=lambda: int(os.environ.get("WALLE_CAM_H", "240" if IS_RASPBERRY_PI else "480"))
     )
 
-    # ── Emotion Eyes (ESP32 OLED displays) ──────────────────────────────────
-    # Serial port for ESP32 eye controller (separate from Arduino motor controller)
-    # Pi: typically /dev/ttyUSB0 or /dev/ttyUSB1.  Override: WALLE_EYE_PORT=...
+    # ── Serial Ports & Automation ──────────────────────────────────────────
+    # Serial port for Arduino motor controller. If empty or "auto", resolves dynamically.
+    arduino_port: str = field(
+        default_factory=lambda: os.environ.get("WALLE_ARDUINO_PORT", "auto")
+    )
+    # Serial port for ESP32 eyes controller. If empty or "auto", resolves dynamically.
     eye_serial_port: str = field(
-        default_factory=lambda: os.environ.get("WALLE_EYE_PORT", "/dev/ttyUSB1")
+        default_factory=lambda: os.environ.get("WALLE_EYE_PORT", "auto")
     )
     eye_serial_baud: int = field(
         default_factory=lambda: int(os.environ.get("WALLE_EYE_BAUD", "115200"))
@@ -212,6 +215,63 @@ class WalleConfig:
             "1" if IS_RASPBERRY_PI else "0"
         ).lower() not in ("0", "false", "no")
     )
+
+    def _auto_detect_ports(self) -> tuple[str | None, str | None]:
+        """Auto-detects (arduino_port, eye_serial_port) from connected USB serial devices."""
+        try:
+            import serial.tools.list_ports
+            ports = list(serial.tools.list_ports.comports())
+        except ImportError:
+            return None, None
+
+        arduino = None
+        eyes = None
+        usb_ports = []
+
+        for p in ports:
+            dev = p.device
+            desc = (p.description or "").lower()
+            is_usb = any(k in dev.lower() for k in ("usb", "acm", "com")) or p.vid is not None
+            if is_usb:
+                usb_ports.append(p)
+
+        # Sort ACM ports first (typically Arduino)
+        usb_ports.sort(key=lambda x: 0 if "acm" in x.device.lower() else 1)
+
+        # 1. Keyword check in description
+        for p in usb_ports:
+            desc = (p.description or "").lower()
+            if any(k in desc for k in ("arduino", "uno", "mega", "ch340")):
+                if not arduino:
+                    arduino = p.device
+            elif any(k in desc for k in ("esp32", "cp210", "silicon labs", "expressif")):
+                if not eyes:
+                    eyes = p.device
+
+        # 2. Fallback assignment
+        unassigned = [p.device for p in usb_ports if p.device not in (arduino, eyes)]
+
+        if not arduino and not eyes:
+            if len(usb_ports) >= 2:
+                arduino = usb_ports[0].device
+                eyes = usb_ports[1].device
+            elif len(usb_ports) == 1:
+                arduino = usb_ports[0].device
+        elif arduino and not eyes and unassigned:
+            eyes = unassigned[0]
+        elif eyes and not arduino and unassigned:
+            arduino = unassigned[0]
+
+        return arduino, eyes
+
+    def __post_init__(self):
+        # Resolve serial ports dynamically if "auto" or empty
+        if not self.arduino_port or not self.eye_serial_port or self.arduino_port == "auto" or self.eye_serial_port == "auto":
+            arduino_detected, eyes_detected = self._auto_detect_ports()
+            if not self.arduino_port or self.arduino_port == "auto":
+                self.arduino_port = arduino_detected or "/dev/ttyACM0"
+            if not self.eye_serial_port or self.eye_serial_port == "auto":
+                self.eye_serial_port = eyes_detected or "/dev/ttyUSB1"
 
     # ── Deployment detection ──────────────────────────────────────────────────
     @property

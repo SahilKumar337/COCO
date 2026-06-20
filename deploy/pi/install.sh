@@ -196,26 +196,30 @@ warn "Example: WALLE_MIC_DEVICE=USB  (matches any device containing 'USB' in its
 success "Audio configured."
 
 # =============================================================================
-section "7/7 — systemd service"
+section "7/7 — systemd service (User level)"
 # =============================================================================
 SERVICE_SRC="$SCRIPT_DIR/walle.service"
-SERVICE_DST="/etc/systemd/system/walle.service"
-CURRENT_USER="$(whoami)"
+USER_SYSTEMD_DIR="$HOME/.config/systemd/user"
+SERVICE_DST="$USER_SYSTEMD_DIR/walle.service"
 
 if [ -f "$SERVICE_SRC" ]; then
-    # Substitute paths and user into the service template
+    mkdir -p "$USER_SYSTEMD_DIR"
+    # Substitute paths into the service template
     sed \
         -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
         -e "s|__VENV_DIR__|$VENV_DIR|g" \
-        -e "s|__USER__|$CURRENT_USER|g" \
-        "$SERVICE_SRC" | sudo tee "$SERVICE_DST" > /dev/null
+        "$SERVICE_SRC" > "$SERVICE_DST"
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable walle.service
-    success "systemd service installed and enabled (starts on boot)."
-    info "  Start now:    sudo systemctl start walle"
-    info "  View logs:    sudo journalctl -u walle -f"
-    info "  Stop:         sudo systemctl stop walle"
+    systemctl --user daemon-reload
+    systemctl --user enable walle.service
+    success "systemd service installed and enabled as USER service (starts on boot/login)."
+    
+    # Enable lingering so user-level systemd services run without active SSH sessions
+    sudo loginctl enable-linger "$(whoami)" || true
+    
+    info "  Start now:    systemctl --user start walle"
+    info "  View logs:    journalctl --user -u walle -f"
+    info "  Stop:         systemctl --user stop walle"
 else
     warn "walle.service template not found — skipping systemd setup."
 fi

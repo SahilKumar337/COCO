@@ -1,29 +1,26 @@
-# /etc/systemd/system/walle.service
-# WALL-E AI — systemd service for Raspberry Pi 5
+# ~/.config/systemd/user/walle.service
+# WALL-E AI — user-level systemd service for Raspberry Pi 4 / 5
 # Created by K.Astra and its members.
 #
 # Installed automatically by deploy/pi/install.sh
-# To edit manually: sudo nano /etc/systemd/system/walle.service
-#                   sudo systemctl daemon-reload && sudo systemctl restart walle
+# To edit manually: nano ~/.config/systemd/user/walle.service
+#                   systemctl --user daemon-reload && systemctl --user restart walle
 
 [Unit]
 Description=WALL-E AI Voice Assistant Server
 Documentation=https://github.com/kastra/walle-ai
 After=network-online.target sound.target
 Wants=network-online.target
-# Wait for network so Gemini API calls work immediately on boot
 After=network.target
 
 [Service]
 Type=simple
-User=__USER__
-Group=__USER__
 WorkingDirectory=__PROJECT_DIR__
 
 # Load environment from .env file
 EnvironmentFile=__PROJECT_DIR__/.env
 
-# Pi 5 specific: set PYTHONUNBUFFERED so logs appear in journalctl in real time
+# Set PYTHONUNBUFFERED so logs appear in journalctl in real time
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 
@@ -36,17 +33,17 @@ RestartSec=5s
 # Give it 30s to gracefully shut down before SIGKILL
 TimeoutStopSec=30
 
-# Resource limits — Pi 5 (8GB RAM): generous but bounded
-# Allow 6GB max to leave headroom for OS + audio buffers
-MemoryMax=6G
-# CPU shares (1024 = normal priority)
-CPUShares=512
+# Resource limits — optimized for Pi 4 (4GB RAM / CPU prioritization)
+# Cap memory at 3GB to leave room for OS and audio servers (PulseAudio/PipeWire)
+MemoryMax=3G
+# CPU weight (100 = normal priority)
+CPUWeight=100
 
-# Security hardening
+# Security hardening (user-level services support basic sandbox)
 NoNewPrivileges=true
 PrivateTmp=true
 
-# Log to journald (view with: sudo journalctl -u walle -f)
+# Log to journald (view with: journalctl --user -u walle -f)
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=walle-ai

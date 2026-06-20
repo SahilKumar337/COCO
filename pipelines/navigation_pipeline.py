@@ -34,6 +34,8 @@ class NavigationPipeline(AbstractPipeline):
         self._ready = False
 
     async def start(self) -> None:
+        if self._ready or self._engine is not None:
+            return
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self._start_engine)
 
@@ -53,6 +55,10 @@ class NavigationPipeline(AbstractPipeline):
     async def stop(self) -> None:
         if self._engine:
             self._engine.stop()
+            try:
+                self._engine.join(timeout=2)
+            except Exception:
+                pass
             self._engine = None
             self._ready = False
             log.info("Navigation pipeline stopped.")

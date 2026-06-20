@@ -138,6 +138,11 @@ async def run():
 
             # ── Start WALL-E session ───────────────────────────────────────────
             log.info(f"Starting WALL-E session for '{speaker_name}'...")
+            
+            # Stop offline navigation/Vosk to free up CPU and GIL for the active Gemini session
+            if nav_pipeline:
+                await nav_pipeline.stop()
+
             session = WalleSession(
                 mode="hardware",
                 current_user=speaker_name,
@@ -186,6 +191,10 @@ async def run():
                     log.error(f"Session error: {e}")
                     say_connectivity_error()
                     await asyncio.sleep(2)
+            finally:
+                # Restart offline navigation when returning to standby mode
+                if nav_pipeline:
+                    await nav_pipeline.start()
 
     finally:
         log.info("Shutting down WALL-E AI...")

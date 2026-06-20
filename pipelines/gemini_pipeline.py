@@ -412,7 +412,9 @@ class WalleSession:
                             if isinstance(res, Exception) and not isinstance(res, asyncio.CancelledError):
                                 log.error(f"Task failure: {res}", exc_info=res)
 
-                        log.info("Gemini Live session disconnected.")
+                        close_code = getattr(session._ws, "close_code", None)
+                        close_reason = getattr(session._ws, "close_reason", None)
+                        log.info(f"Gemini Live session disconnected (WebSocket Code: {close_code}, Reason: {close_reason}).")
                         if not self.active:
                             return
                         connected = True

@@ -43,9 +43,9 @@ CPUWeight=100
 NoNewPrivileges=true
 PrivateTmp=true
 
-# Log to journald (view with: journalctl --user -u walle -f)
-StandardOutput=journal
-StandardError=journal
+# Log to walle.log file inside the project directory
+StandardOutput=append:__PROJECT_DIR__/walle.log
+StandardError=append:__PROJECT_DIR__/walle.log
 SyslogIdentifier=walle-ai
 
 [Install]
